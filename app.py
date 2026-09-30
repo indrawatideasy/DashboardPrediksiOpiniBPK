@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import pickle  # atau gunakan 'import pickle'
+import joblib  # atau gunakan 'import pickle'
 import os
 
 # ---------------------------------------------------------
