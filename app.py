@@ -15,7 +15,7 @@ st.set_page_config(
 st.title("📊 Dashboard Analisis Kinerja & Opini Pemda (Sumatera Selatan)")
 
 # ---------------------------------------------------------
-# Sidebar: Upload File & 2 Radio Buttons Filter
+# Sidebar: Upload File & Filter Radio Buttons
 # ---------------------------------------------------------
 st.sidebar.header("📁 Filter Data")
 
@@ -106,17 +106,18 @@ if "Pemda" in df.columns:
 # SETUP TABS
 # ---------------------------------------------------------
 tab1, tab2, tab3 = st.tabs([
-    "📌 Ringkasan & Tren Belanja", 
+    "📌 Ringkasan & Korelasi Belanja", 
     "📈 Tren Indikator Keuangan", 
     "🎯 Kluster Pemda"
 ])
 
 # ---------------------------------------------------------
-# TAB 1: RINGKASAN INDIKATOR & TREN BELANJA
+# TAB 1: RINGKASAN INDIKATOR & KORELASI BELANJA
 # ---------------------------------------------------------
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
+    # Baris 1 KPI: Indikator Keuangan & Fiskal
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         val_solv = df_filtered["solvabilitas"].mean()
@@ -133,6 +134,7 @@ with tab1:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # Baris 2 KPI: Kepatuhan & Status Opini BPK
     m5, m6, m7, m8 = st.columns(4)
     with m5:
         val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean()
@@ -149,72 +151,57 @@ with tab1:
 
     st.markdown("---")
 
-    # Grafik Tren Proporsi Belanja (Modal & Barang)
-    st.subheader("📈 Tren Proporsi Belanja Modal & Barang")
+    # SECTION SCATTER PLOT KORELASI BELANJA
+    st.subheader("🔍 Analisis Scatterplot Korelasi Belanja vs Indikator Keuangan")
 
-    if "Tahun" in df_filtered.columns and not df_filtered.empty:
-        df_trend_belanja = df_filtered.groupby("Tahun")[["b_mdl", "b_brg"]].mean().reset_index()
-        
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            fig_mdl = px.line(
-                df_trend_belanja, x="Tahun", y="b_mdl", markers=True,
-                title="Belanja Modal (b_mdl)", labels={"b_mdl": "Proporsi (%)"}
+    if not df_filtered.empty:
+        col_sc1, col_sc2 = st.columns(2)
+
+        # 1. Scatterplot Korelasi Belanja Pegawai (b_peg)
+        with col_sc1:
+            var_peg = st.radio(
+                "Pilih Variabel Korelasi Belanja Pegawai:",
+                ["IKF", "DCC"],
+                key="radio_peg",
+                horizontal=True
             )
-            fig_mdl.update_traces(line_color="#1abc9c", line_width=3)
-            st.plotly_chart(fig_mdl, use_container_width=True)
             
-        with col_g2:
-            fig_brg = px.line(
-                df_trend_belanja, x="Tahun", y="b_brg", markers=True,
-                title="Belanja Barang (b_brg)", labels={"b_brg": "Proporsi (%)"}
+            fig_sc_peg = px.scatter(
+                df_filtered,
+                x="b_peg",
+                y=var_peg,
+                color="Tahun" if "Tahun" in df_filtered.columns else None,
+                hover_data=["Pemda", "Tahun", "Opini Y-1"],
+                title=f"Scatterplot: Belanja Pegawai (%) vs {var_peg}",
+                labels={"b_peg": "Belanja Pegawai (%)", var_peg: var_peg},
+                trendline="ols"  # Menampilkan garis tren korelasi
             )
-            fig_brg.update_traces(line_color="#3498db", line_width=3)
-            st.plotly_chart(fig_brg, use_container_width=True)
+            fig_sc_peg.update_traces(marker=dict(size=10, opacity=0.8))
+            st.plotly_chart(fig_sc_peg, use_container_width=True)
+
+        # 2. Scatterplot Korelasi Belanja Modal (b_mdl)
+        with col_sc2:
+            var_mdl = st.radio(
+                "Pilih Variabel Korelasi Belanja Modal:",
+                ["IKF", "DCC"],
+                key="radio_mdl",
+                horizontal=True
+            )
+            
+            fig_sc_mdl = px.scatter(
+                df_filtered,
+                x="b_mdl",
+                y=var_mdl,
+                color="Tahun" if "Tahun" in df_filtered.columns else None,
+                hover_data=["Pemda", "Tahun", "Opini Y-1"],
+                title=f"Scatterplot: Belanja Modal (%) vs {var_mdl}",
+                labels={"b_mdl": "Belanja Modal (%)", var_mdl: var_mdl},
+                trendline="ols"  # Menampilkan garis tren korelasi
+            )
+            fig_sc_mdl.update_traces(marker=dict(size=10, opacity=0.8))
+            st.plotly_chart(fig_sc_mdl, use_container_width=True)
     else:
-        st.info("Data tidak cukup untuk menampilkan tren belanja modal dan barang.")
-
-    st.markdown("---")
-
-    # Bagian Khusus: 2 Grafik Belanja Pegawai + Filter Korelasi IKF / DCC
-    st.subheader("📈 Analisis & Korelasi Belanja Pegawai dengan IKF / DCC")
-    
-    col_f1, col_f2 = st.columns([1, 3])
-    with col_f1:
-        var_korelasi = st.selectbox("Pilih Variabel Korelasi:", ["IKF", "DCC"], index=0)
-
-    if "Tahun" in df_filtered.columns and not df_filtered.empty:
-        df_korelasi = df_filtered.groupby("Tahun")[["b_peg", var_korelasi]].mean().reset_index()
-        
-        col_k1, col_k2 = st.columns(2)
-        
-        with col_k1:
-            fig_bp1 = px.line(
-                df_korelasi, x="Tahun", y="b_peg", markers=True,
-                title="Tren Belanja Pegawai (Grafik 1)", labels={"b_peg": "Proporsi (%)"}
-            )
-            fig_bp1.update_traces(line_color="#e67e22", line_width=3)
-            st.plotly_chart(fig_bp1, use_container_width=True)
-            
-        with col_k2:
-            fig_bp2 = px.line(
-                df_korelasi, x="Tahun", y=var_korelasi, markers=True,
-                title=f"Tren Variabel {var_korelasi} (Grafik 2)", labels={var_korelasi: var_korelasi}
-            )
-            fig_bp2.update_traces(line_color="#9b59b6", line_width=3)
-            st.plotly_chart(fig_bp2, use_container_width=True)
-            
-        # Scatter Plot Korelasi Langsung
-        fig_scatter_corr = px.scatter(
-            df_filtered, x="b_peg", y=var_korelasi, color="Tahun" if "Tahun" in df_filtered.columns else None,
-            hover_data=["Pemda", "Tahun"],
-            title=f"Scatter Plot Korelasi: Belanja Pegawai vs {var_korelasi}",
-            labels={"b_peg": "Belanja Pegawai (%)", var_korelasi: var_korelasi}
-        )
-        fig_scatter_corr.update_traces(marker=dict(size=10, opacity=0.8))
-        st.plotly_chart(fig_scatter_corr, use_container_width=True)
-    else:
-        st.info("Data tidak cukup untuk menampilkan korelasi belanja pegawai.")
+        st.info("Data tidak cukup untuk menampilkan scatterplot korelasi.")
 
 # ---------------------------------------------------------
 # TAB 2: TREN INDIKATOR KEUANGAN PER TAHUN
