@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
+import joblib  # atau gunakan 'import pickle'
+import os
 
 # ---------------------------------------------------------
 # Configuration & Page Setup
@@ -17,11 +17,41 @@ st.set_page_config(
 st.title("📊 Dashboard Analisis Kinerja & Opini Pemda (Sumatera Selatan)")
 
 # ---------------------------------------------------------
+# Load Pre-trained Model (.pkl)
+# ---------------------------------------------------------
+MODEL_PATH = "model_logistic_regression.pkl"  # Sesuaikan nama file .pkl Anda
+
+@st.cache_resource
+def load_trained_model(path):
+    if os.path.exists(path):
+        try:
+            # Menggunakan joblib (atau pickle.load(open(path, 'rb')))
+            loaded_model = joblib.load(path)
+            return loaded_model
+        except Exception as e:
+            st.error(f"Gagal memuat file model .pkl: {e}")
+            return None
+    else:
+        st.warning(f"File model '{path}' tidak ditemukan di direktori aplikasi. Silakan unggah file .pkl.")
+        return None
+
+model = load_trained_model(MODEL_PATH)
+
+# ---------------------------------------------------------
 # Sidebar: Upload File & Filter Radio Buttons
 # ---------------------------------------------------------
 st.sidebar.header("📁 Filter Data")
 
-uploaded_file = st.sidebar.file_uploader("Unggah File Excel/CSV", type=["xlsx", "xls", "csv"])
+uploaded_file = st.sidebar.file_uploader("Unggah File Excel/CSV Data Pemda", type=["xlsx", "xls", "csv"])
+
+# Option jika ingin upload model .pkl langsung lewat sidebar (Opsional)
+uploaded_model_file = st.sidebar.file_uploader("Unggah Model (.pkl) [Opsional]", type=["pkl"])
+if uploaded_model_file is not None:
+    try:
+        model = joblib.load(uploaded_model_file)
+        st.sidebar.success("Model .pkl berhasil dimuat dari upload!")
+    except Exception as e:
+        st.sidebar.error(f"Gagal memuat file model .pkl: {e}")
 
 # Pemetaan Indeks Opini
 OPINI_MAP = {
@@ -30,7 +60,7 @@ OPINI_MAP = {
     3: "WTP"
 }
 
-# Daftar Pemda dan Tahun (2021-2025)
+# Daftar Pemda dan Tahun
 LIST_PEMDA = [
     "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
     "Muba", "Mura", "Muratara", "OI", "OKI", "OKU", "OKUS", 
@@ -42,12 +72,9 @@ LIST_TAHUN = [2021, 2022, 2023, 2024, 2025]
 def generate_sample_data():
     np.random.seed(42)
     records = []
-    
     for thn in LIST_TAHUN:
         for pmd in LIST_PEMDA:
-            # Generate opini aktual Opini Y (1: WDP, 2: WTP PSH, 3: WTP)
             opini_code = np.random.choice([1, 2, 3], p=[0.15, 0.25, 0.60])
-            
             records.append({
                 "Tahun": thn,
                 "Pemda": pmd,
@@ -75,7 +102,7 @@ if uploaded_file is not None:
             df = pd.read_excel(uploaded_file)
         st.sidebar.success("File Excel berhasil diunggah!")
     except Exception as e:
-        st.sidebar.error(f"Gagal membaca file: {e}")
+        st.sidebar.error(f"Gagal membaca file data: {e}")
         df = generate_sample_data()
 else:
     st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
@@ -91,21 +118,12 @@ if "Opini Y" not in df.columns:
         df["Opini Y_Kode"] = np.random.choice([1, 2, 3], size=len(df), p=[0.15, 0.25, 0.60])
         df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
 
-# Mapping Kode Angka untuk Opini Y
-if "Opini Y_Kode" not in df.columns:
-    if set(df["Opini Y"].dropna().unique()).issubset({1, 2, 3}):
-        df["Opini Y_Kode"] = df["Opini Y"].astype(int)
-        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
-    else:
-        reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
-        df["Opini Y_Kode"] = df["Opini Y"].map(reverse_map).fillna(3).astype(int)
-
 if "Kluster" not in df.columns:
     df["Kluster"] = np.random.choice(["Kluster 1", "Kluster 2", "Kluster 3"], size=len(df))
 
 # ---------------------------------------------------------
-# ALGORITMA LOGISTIC REGRESSION UNTUK PREDIKSI OPINI BPK
-# Variabel yang Digunakan: IKF, DCC, solvabilitas, likuiditas, b_peg, b_mdl, TLRHP Y-1_Sesuai, %lunas_rugi(t-1)
+# INFERENSI/PREDIKSI MENGGUNAKAN MODEL .PKL
+# Variabel: IKF, DCC, solvabilitas, likuiditas, b_peg, b_mdl, TLRHP Y-1_Sesuai, %lunas_rugi(t-1)
 # ---------------------------------------------------------
 feature_cols = [
     "IKF", 
@@ -120,33 +138,30 @@ feature_cols = [
 
 available_features = [col for col in feature_cols if col in df.columns]
 
-model_accuracy = None
-class_report = None
-
-if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
-    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
-    
-    if len(df_clean) > 5:
-        X = df_clean[available_features]
-        y = df_clean["Opini Y_Kode"].astype(int)
+if model is not None and len(available_features) == len(feature_cols):
+    try:
+        # Menyiapkan data fitur untuk prediksi
+        X_predict = df[feature_cols].fillna(0)
         
-        # Pelatihan Logistic Regression
-        model = LogisticRegression(max_iter=1000, random_state=42)
-        model.fit(X, y)
+        # Eksekusi Prediksi menggunakan Model .pkl
+        preds_raw = model.predict(X_predict)
         
-        # Prediksi Seluruh Dataset menggunakan Fitur Tertentu
-        preds_code = model.predict(df[available_features].fillna(0))
-        df["Prediksi_Kode"] = preds_code
-        df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
-        
-        # Evaluasi Model
-        y_pred = model.predict(X)
-        model_accuracy = accuracy_score(y, y_pred)
-        class_report = classification_report(y, y_pred, target_names=["WDP (1)", "WTP PSH (2)", "WTP (3)"], output_dict=True)
-    else:
+        # Jika hasil prediksi berupa angka (1, 2, 3), petakan ke label (WDP, WTP PSH, WTP)
+        if set(preds_raw).issubset({1, 2, 3}):
+            df["Prediksi_Kode"] = preds_raw
+            df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
+        else:
+            # Jika model .pkl langsung mengembalikan string ("WTP", "WDP", dll.)
+            df["Prediksi Opini BPK (ML)"] = preds_raw
+            
+    except Exception as e:
+        st.error(f"Terjadi kesalahan saat memprediksi dengan model .pkl: {e}")
         df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 else:
-    st.warning(f"Variabel untuk Logistic Regression tidak lengkap. Diperlukan: {', '.join(feature_cols)}")
+    if model is None:
+        st.warning("Model .pkl belum dimuat.")
+    else:
+        st.warning(f"Data tidak memiliki variabel lengkap. Diperlukan: {', '.join(feature_cols)}")
     df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 
 df_filtered = df.copy()
@@ -186,7 +201,6 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
-    # Fungsi penolong mengambil nilai aktual
     def get_actual_val(dataframe, col_name):
         if col_name not in dataframe.columns or dataframe.empty:
             return "-"
@@ -201,11 +215,9 @@ with tab1:
     # Baris 1 KPI: Indikator Keuangan & Fiskal
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        val_solv = get_actual_val(df_filtered, "solvabilitas")
-        st.metric("Solvabilitas (Aktual)", val_solv)
+        st.metric("Solvabilitas (Aktual)", get_actual_val(df_filtered, "solvabilitas"))
     with m2:
-        val_lik = get_actual_val(df_filtered, "likuiditas")
-        st.metric("Likuiditas (Aktual)", val_lik)
+        st.metric("Likuiditas (Aktual)", get_actual_val(df_filtered, "likuiditas"))
     with m3:
         val_dcc = df_filtered["DCC"].mean() if "DCC" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Days Cash Coverage (DCC)", f"{val_dcc:.1f} Hari" if pd.notnull(val_dcc) else "-")
@@ -215,7 +227,7 @@ with tab1:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Baris 2 KPI: Kepatuhan & Status Opini BPK (Aktual vs Prediksi ML)
+    # Baris 2 KPI: Kepatuhan & Status Opini BPK (Aktual vs Prediksi ML .pkl)
     m5, m6, m7, m8 = st.columns(4)
     with m5:
         val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean() if "TLRHP Y-1_Sesuai" in df_filtered.columns and not df_filtered.empty else None
@@ -224,43 +236,30 @@ with tab1:
         val_rugi = df_filtered["%lunas_rugi(t-1)"].mean() if "%lunas_rugi(t-1)" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Penyelesaian Ganti Rugi (%)", f"{val_rugi:.2f}%" if pd.notnull(val_rugi) else "-")
     with m7:
-        # Opini BPK Aktual (Opini Y)
         if not df_filtered.empty and "Opini Y" in df_filtered.columns:
             opini_aktual = df_filtered["Opini Y"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini Y"].mode()[0]
         else:
             opini_aktual = "-"
         st.metric("Opini BPK Aktual (Opini Y)", opini_aktual)
     with m8:
-        # Prediksi Opini BPK dari Model Logistic Regression
         if not df_filtered.empty and "Prediksi Opini BPK (ML)" in df_filtered.columns:
             opini_pred = df_filtered["Prediksi Opini BPK (ML)"].iloc[0] if len(df_filtered) == 1 else df_filtered["Prediksi Opini BPK (ML)"].mode()[0]
         else:
             opini_pred = "-"
         st.metric("Prediksi Opini BPK (ML)", opini_pred)
 
-    # Komparasi Detail & Performa Model Logistic Regression
-    if model_accuracy is not None:
-        with st.expander("ℹ️️ Perbandingan Detail: Opini Aktual vs Prediksi Logistic Regression"):
-            st.write(f"**Akurasi Logistic Regression (Model Training):** {model_accuracy * 100:.2f}%")
-            
-            col_exp1, col_exp2 = st.columns([1, 2])
-            with col_exp1:
-                st.markdown("**Laporan Klasifikasi:**")
-                if class_report:
-                    st.dataframe(pd.DataFrame(class_report).transpose().style.format("{:.2f}"))
-            
-            with col_exp2:
-                st.markdown("**Tabel Perbandingan Opini Aktual (Y) vs Prediksi (ML):**")
-                show_cols = ["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"]
-                existing_show_cols = [c for c in show_cols if c in df_filtered.columns]
-                
-                df_compare = df_filtered[existing_show_cols].copy()
-                df_compare["Status Evaluasi"] = np.where(
-                    df_compare["Opini Y"] == df_compare["Prediksi Opini BPK (ML)"], 
-                    "✅ Sesuai", 
-                    "❌ Beda"
-                )
-                st.dataframe(df_compare, use_container_width=True)
+    # Tabel Komparasi Hasil Prediksi Model .pkl vs Aktual
+    with st.expander("ℹ️ Perbandingan Detail: Opini Aktual (Y) vs Prediksi Model .pkl"):
+        show_cols = ["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"]
+        existing_show_cols = [c for c in show_cols if c in df_filtered.columns]
+        
+        df_compare = df_filtered[existing_show_cols].copy()
+        df_compare["Status Evaluasi"] = np.where(
+            df_compare["Opini Y"] == df_compare["Prediksi Opini BPK (ML)"], 
+            "✅ Sesuai", 
+            "❌ Beda"
+        )
+        st.dataframe(df_compare, use_container_width=True)
 
     st.markdown("---")
 
@@ -269,10 +268,8 @@ with tab1:
 
     if not df_filtered.empty:
         col_sc1, col_sc2 = st.columns(2)
-
         indikator_options = ["IKF", "DCC", "solvabilitas", "likuiditas"]
 
-        # 1. Scatterplot Korelasi Belanja Pegawai (b_peg)
         with col_sc1:
             var_peg = st.radio(
                 "Pilih Variabel Korelasi Belanja Pegawai:",
@@ -280,7 +277,6 @@ with tab1:
                 key="radio_peg",
                 horizontal=True
             )
-            
             fig_sc_peg = px.scatter(
                 df_filtered,
                 x="b_peg",
@@ -294,7 +290,6 @@ with tab1:
             fig_sc_peg.update_traces(marker=dict(size=10, opacity=0.8))
             st.plotly_chart(fig_sc_peg, use_container_width=True)
 
-        # 2. Scatterplot Korelasi Belanja Modal (b_mdl)
         with col_sc2:
             var_mdl = st.radio(
                 "Pilih Variabel Korelasi Belanja Modal:",
@@ -302,7 +297,6 @@ with tab1:
                 key="radio_mdl",
                 horizontal=True
             )
-            
             fig_sc_mdl = px.scatter(
                 df_filtered,
                 x="b_mdl",
@@ -319,11 +313,10 @@ with tab1:
         st.info("Data tidak cukup untuk menampilkan scatterplot korelasi.")
 
 # ---------------------------------------------------------
-# TAB 2: TREN INDIKATOR KEUANGAN PER TAHUN
+# TAB 2 & TAB 3 (SAMA SEPERTI SEBELUMNYA)
 # ---------------------------------------------------------
 with tab2:
     st.subheader("📊 Tren Indikator Keuangan per Tahun (2021 - 2025)")
-    
     if "Tahun" in df_filtered.columns and not df_filtered.empty:
         df_trend_fin = df_filtered.groupby("Tahun")[["likuiditas", "solvabilitas", "DCC", "IKF"]].mean().reset_index()
         
@@ -331,51 +324,30 @@ with tab2:
         col_t3, col_t4 = st.columns(2)
         
         with col_t1:
-            fig_lik = px.line(
-                df_trend_fin, x="Tahun", y="likuiditas", markers=True,
-                title="Grafik Likuiditas per Tahun", labels={"likuiditas": "Rasio Likuiditas"}
-            )
+            fig_lik = px.line(df_trend_fin, x="Tahun", y="likuiditas", markers=True, title="Grafik Likuiditas per Tahun")
             fig_lik.update_traces(line_color="#2ecc71", line_width=3)
             st.plotly_chart(fig_lik, use_container_width=True)
             
         with col_t2:
-            fig_solv = px.line(
-                df_trend_fin, x="Tahun", y="solvabilitas", markers=True,
-                title="Grafik Solvabilitas per Tahun", labels={"solvabilitas": "Rasio Solvabilitas"}
-            )
+            fig_solv = px.line(df_trend_fin, x="Tahun", y="solvabilitas", markers=True, title="Grafik Solvabilitas per Tahun")
             fig_solv.update_traces(line_color="#e74c3c", line_width=3)
             st.plotly_chart(fig_solv, use_container_width=True)
             
         with col_t3:
-            fig_dcc = px.line(
-                df_trend_fin, x="Tahun", y="DCC", markers=True,
-                title="Grafik Days Cash Coverage (DCC) per Tahun", labels={"DCC": "DCC (Hari)"}
-            )
+            fig_dcc = px.line(df_trend_fin, x="Tahun", y="DCC", markers=True, title="Grafik Days Cash Coverage (DCC) per Tahun")
             fig_dcc.update_traces(line_color="#9b59b6", line_width=3)
             st.plotly_chart(fig_dcc, use_container_width=True)
             
         with col_t4:
-            fig_ikf = px.line(
-                df_trend_fin, x="Tahun", y="IKF", markers=True,
-                title="Grafik IKF per Tahun", labels={"IKF": "Indeks Kemampuan Fiskal"}
-            )
+            fig_ikf = px.line(df_trend_fin, x="Tahun", y="IKF", markers=True, title="Grafik IKF per Tahun")
             fig_ikf.update_traces(line_color="#f39c12", line_width=3)
             st.plotly_chart(fig_ikf, use_container_width=True)
-    else:
-        st.info("Data tidak cukup untuk menampilkan tren indikator keuangan.")
 
-# ---------------------------------------------------------
-# TAB 3: GRAFIK KLUSTER PEMDA
-# ---------------------------------------------------------
 with tab3:
     st.subheader("🎯 Visualisasi Kluster Pemda")
-    st.markdown("Pemetaan kelompok Pemda berdasarkan indikator keuangan dan kepatuhan.")
-    
     if not df_filtered.empty:
         col_c1, col_c2 = st.columns([3, 1])
-        
         with col_c2:
-            st.markdown("**Pengaturan Sumbu Grafik:**")
             x_axis = st.selectbox("Sumbu X:", ["IKF", "DCC", "solvabilitas", "likuiditas", "TLRHP Y-1_Sesuai"], index=0)
             y_axis = st.selectbox("Sumbu Y:", ["likuiditas", "solvabilitas", "DCC", "IKF", "%lunas_rugi(t-1)"], index=0)
         
@@ -387,10 +359,7 @@ with tab3:
                 color="Kluster" if "Kluster" in df_filtered.columns else "Opini Y",
                 symbol="Opini Y",
                 hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
-                title=f"Pemetaan Kluster Pemda ({x_axis} vs {y_axis})",
-                size="DCC" if "DCC" in df_filtered.columns else None
+                title=f"Pemetaan Kluster Pemda ({x_axis} vs {y_axis})"
             )
             fig_cluster.update_traces(marker=dict(size=12, opacity=0.8))
             st.plotly_chart(fig_cluster, use_container_width=True)
-    else:
-        st.info("Data tidak cukup untuk menampilkan pemetaan kluster.")
