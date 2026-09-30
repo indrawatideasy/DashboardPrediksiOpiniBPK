@@ -26,16 +26,20 @@ uploaded_file = st.sidebar.file_uploader("Unggah Dataset Pemda (CSV / Excel)", t
 @st.cache_data
 def generate_dummy_data():
     np.random.seed(42)
-    n = 150
+    n = 300
     opini_list = ["WTP", "WDP", "TW", "TMP"]
+    years = [2022, 2023, 2024]
+    pemda_list = [f"Pemda Kab/Kota {i+1}" for i in range(50)]
+    
     data = {
-        "Pemda": [f"Pemda {i+1}" for i in range(n)],
+        "Tahun": np.random.choice(years, size=n),
+        "Pemda": np.random.choice(pemda_list, size=n),
         "Opini Y-1": np.random.choice(opini_list, size=n, p=[0.65, 0.20, 0.10, 0.05]),
         "IKF": np.round(np.random.uniform(0.2, 1.8, size=n), 3),
         "DCC": np.round(np.random.uniform(5, 45, size=n), 2),
         "solvabilitas": np.round(np.random.uniform(0.8, 3.5, size=n), 2),
         "likuiditas": np.round(np.random.uniform(1.0, 5.0, size=n), 2),
-        "b_peg": np.round(np.random.uniform(25, 55, size=n), 2),  # persentase atau nilai belanja
+        "b_peg": np.round(np.random.uniform(25, 55, size=n), 2),
         "b_mdl": np.round(np.random.uniform(10, 35, size=n), 2),
         "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98, size=n), 2),
         "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95, size=n), 2)
@@ -57,16 +61,53 @@ else:
     df = generate_dummy_data()
 
 # ---------------------------------------------------------
-# Sidebar Filters
+# Sidebar Menu Radio Button & Dynamic Filters
 # ---------------------------------------------------------
+st.sidebar.subheader("🎯 Mode Filter Utama")
+
+# Radio Button untuk memilih metode penyaringan
+filter_mode = st.sidebar.radio(
+    "Pilih Fokus Filter:",
+    options=["Berdasarkan Tahun", "Berdasarkan Nama Pemda", "Tampilkan Semua"],
+    index=0
+)
+
+df_filtered = df.copy()
+
+if filter_mode == "Berdasarkan Tahun":
+    if "Tahun" in df.columns:
+        available_years = sorted(list(df["Tahun"].dropna().unique()))
+        selected_years = st.sidebar.multiselect(
+            "Pilih Tahun Data:",
+            options=available_years,
+            default=available_years
+        )
+        df_filtered = df_filtered[df_filtered["Tahun"].isin(selected_years)]
+    else:
+        st.sidebar.warning("Kolom 'Tahun' tidak ditemukan dalam dataset.")
+
+elif filter_mode == "Berdasarkan Nama Pemda":
+    if "Pemda" in df.columns:
+        available_pemda = sorted(list(df["Pemda"].dropna().unique()))
+        selected_pemda = st.sidebar.multiselect(
+            "Pilih Nama Pemda:",
+            options=available_pemda,
+            default=available_pemda[:5] if len(available_pemda) >= 5 else available_pemda
+        )
+        df_filtered = df_filtered[df_filtered["Pemda"].isin(selected_pemda)]
+    else:
+        st.sidebar.warning("Kolom 'Pemda' tidak ditemukan dalam dataset.")
+
+# Additional Filter: Opini Y-1
+st.sidebar.markdown("---")
 available_opinions = list(df["Opini Y-1"].dropna().unique())
 selected_opinions = st.sidebar.multiselect(
-    "Pilih Opini Y-1:",
+    "Filter Kategori Opini Y-1:",
     options=available_opinions,
     default=available_opinions
 )
 
-df_filtered = df[df["Opini Y-1"].isin(selected_opinions)]
+df_filtered = df_filtered[df_filtered["Opini Y-1"].isin(selected_opinions)]
 
 color_map = {
     "WTP": "#2ecc71",  # Hijau
