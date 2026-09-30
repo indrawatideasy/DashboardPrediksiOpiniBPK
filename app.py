@@ -19,9 +19,9 @@ st.markdown("Visualisasi komparatif indikator keuangan, kapasitas fiskal, dan ti
 # ---------------------------------------------------------
 # Sidebar & Data Loading
 # ---------------------------------------------------------
-st.sidebar.header("📁 Pengaturan Data & Filter")
+st.sidebar.header("📁 Filter Data")
 
-uploaded_file = st.sidebar.file_uploader("Unggah Dataset Pemda (CSV / Excel)", type=["csv", "xlsx"])
+uploaded_file = st.sidebar.file_uploader("Unggah Dataset (CSV / Excel)", type=["csv", "xlsx"])
 
 @st.cache_data
 def generate_dummy_data():
@@ -29,7 +29,7 @@ def generate_dummy_data():
     n = 300
     opini_list = ["WTP", "WDP", "TW", "TMP"]
     years = [2022, 2023, 2024]
-    pemda_list = [f"Pemda Kab/Kota {i+1}" for i in range(50)]
+    pemda_list = [f"Pemda Kab/Kota {i+1}" for i in range(10)]
     
     data = {
         "Tahun": np.random.choice(years, size=n),
@@ -61,54 +61,31 @@ else:
     df = generate_dummy_data()
 
 # ---------------------------------------------------------
-# Sidebar Menu Radio Button & Dynamic Filters
+# Sidebar Radio Button Filters (Hanya Tahun dan Pemda)
 # ---------------------------------------------------------
-st.sidebar.subheader("🎯 Mode Filter Utama")
-
-# Radio Button untuk memilih metode penyaringan
-filter_mode = st.sidebar.radio(
-    "Pilih Fokus Filter:",
-    options=["Berdasarkan Tahun", "Berdasarkan Nama Pemda", "Tampilkan Semua"],
-    index=0
-)
-
 df_filtered = df.copy()
 
-if filter_mode == "Berdasarkan Tahun":
-    if "Tahun" in df.columns:
-        available_years = sorted(list(df["Tahun"].dropna().unique()))
-        selected_years = st.sidebar.multiselect(
-            "Pilih Tahun Data:",
-            options=available_years,
-            default=available_years
-        )
-        df_filtered = df_filtered[df_filtered["Tahun"].isin(selected_years)]
-    else:
-        st.sidebar.warning("Kolom 'Tahun' tidak ditemukan dalam dataset.")
+# 1. Radio Button Tahun
+if "Tahun" in df.columns:
+    available_years = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
+    selected_year = st.sidebar.radio("🗓️ Pilih Tahun:", options=available_years, index=0)
+    
+    if selected_year != "Semua Tahun":
+        # Konversi ke tipe data numerik sesuai data asli jika memungkinkan
+        try:
+            df_filtered = df_filtered[df_filtered["Tahun"] == int(selected_year)]
+        except ValueError:
+            df_filtered = df_filtered[df_filtered["Tahun"] == selected_year]
 
-elif filter_mode == "Berdasarkan Nama Pemda":
-    if "Pemda" in df.columns:
-        available_pemda = sorted(list(df["Pemda"].dropna().unique()))
-        selected_pemda = st.sidebar.multiselect(
-            "Pilih Nama Pemda:",
-            options=available_pemda,
-            default=available_pemda[:5] if len(available_pemda) >= 5 else available_pemda
-        )
-        df_filtered = df_filtered[df_filtered["Pemda"].isin(selected_pemda)]
-    else:
-        st.sidebar.warning("Kolom 'Pemda' tidak ditemukan dalam dataset.")
+# 2. Radio Button Nama Pemda
+if "Pemda" in df.columns:
+    available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
+    selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
+    
+    if selected_pemda != "Semua Pemda":
+        df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
 
-# Additional Filter: Opini Y-1
-st.sidebar.markdown("---")
-available_opinions = list(df["Opini Y-1"].dropna().unique())
-selected_opinions = st.sidebar.multiselect(
-    "Filter Kategori Opini Y-1:",
-    options=available_opinions,
-    default=available_opinions
-)
-
-df_filtered = df_filtered[df_filtered["Opini Y-1"].isin(selected_opinions)]
-
+# Map Warna Opini BPK
 color_map = {
     "WTP": "#2ecc71",  # Hijau
     "WDP": "#f39c12",  # Oranye
