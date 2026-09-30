@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from sklearn.linear_model import LogisticRegression
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
 
 # ---------------------------------------------------------
@@ -45,9 +47,7 @@ def generate_sample_data():
     
     for thn in LIST_TAHUN:
         for pmd in LIST_PEMDA:
-            # Generate opini aktual Opini Y (1: WDP, 2: WTP PSH, 3: WTP)
             opini_code = np.random.choice([1, 2, 3], p=[0.15, 0.25, 0.60])
-            
             records.append({
                 "Tahun": thn,
                 "Pemda": pmd,
@@ -61,8 +61,7 @@ def generate_sample_data():
                 "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98), 2),
                 "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95), 2),
                 "Opini Y_Kode": opini_code,
-                "Opini Y": OPINI_MAP[opini_code],
-                "Kluster": np.random.choice(["Kluster 1 (Kinerja Tinggi)", "Kluster 2 (Sedang)", "Kluster 3 (Perlu Perhatian)"])
+                "Opini Y": OPINI_MAP[opini_code]
             })
     return pd.DataFrame(records)
 
@@ -91,7 +90,6 @@ if "Opini Y" not in df.columns:
         df["Opini Y_Kode"] = np.random.choice([1, 2, 3], size=len(df), p=[0.15, 0.25, 0.60])
         df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
 
-# Mapping Kode Angka untuk Opini Y
 if "Opini Y_Kode" not in df.columns:
     if set(df["Opini Y"].dropna().unique()).issubset({1, 2, 3}):
         df["Opini Y_Kode"] = df["Opini Y"].astype(int)
@@ -100,22 +98,12 @@ if "Opini Y_Kode" not in df.columns:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
         df["Opini Y_Kode"] = df["Opini Y"].map(reverse_map).fillna(3).astype(int)
 
-if "Kluster" not in df.columns:
-    df["Kluster"] = np.random.choice(["Kluster 1", "Kluster 2", "Kluster 3"], size=len(df))
-
 # ---------------------------------------------------------
 # ALGORITMA LOGISTIC REGRESSION UNTUK PREDIKSI OPINI BPK
-# Variabel Prediktor: IKF, DCC, solvabilitas, likuiditas, b_peg, b_mdl, TLRHP Y-1_Sesuai, %lunas_rugi(t-1)
 # ---------------------------------------------------------
 feature_cols = [
-    "IKF", 
-    "DCC", 
-    "solvabilitas", 
-    "likuiditas", 
-    "b_peg", 
-    "b_mdl", 
-    "TLRHP Y-1_Sesuai", 
-    "%lunas_rugi(t-1)"
+    "IKF", "DCC", "solvabilitas", "likuiditas", 
+    "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"
 ]
 
 available_features = [col for col in feature_cols if col in df.columns]
@@ -130,29 +118,25 @@ if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns
         X = df_clean[available_features]
         y = df_clean["Opini Y_Kode"].astype(int)
         
-        # Inisialisasi dan Training Logistic Regression
         model = LogisticRegression(max_iter=1000, random_state=42)
         model.fit(X, y)
         
-        # Prediksi Seluruh Dataset
         preds_code = model.predict(df[available_features].fillna(0))
         df["Prediksi_Kode"] = preds_code
         df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
         
-        # Evaluasi Model
         y_pred = model.predict(X)
         model_accuracy = accuracy_score(y, y_pred)
         class_report = classification_report(y, y_pred, target_names=["WDP (1)", "WTP PSH (2)", "WTP (3)"], output_dict=True)
     else:
         df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 else:
-    st.warning(f"Variabel untuk Logistic Regression belum lengkap. Diperlukan: {', '.join(feature_cols)}")
     df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 
 df_filtered = df.copy()
 
 # ---------------------------------------------------------
-# SIDEBAR RADIO BUTTON FILTERS
+# SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
 # ---------------------------------------------------------
 if "Tahun" in df.columns:
     available_years = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
@@ -166,7 +150,7 @@ if "Tahun" in df.columns:
 
 if "Pemda" in df.columns:
     available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
-    selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
+    selected_pemda = st.sidebar.radio("🏛️️ Pilih Pemda:", options=available_pemda, index=0)
     
     if selected_pemda != "Semua Pemda":
         df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
@@ -177,7 +161,7 @@ if "Pemda" in df.columns:
 tab1, tab2, tab3 = st.tabs([
     "📌 Ringkasan & Korelasi Belanja", 
     "📈 Tren Indikator Keuangan", 
-    "🎯 Kluster Pemda"
+    "🎯 Kluster Pemda (K-Means)"
 ])
 
 # ---------------------------------------------------------
@@ -197,7 +181,6 @@ with tab1:
         else:
             return f"{vals.iloc[-1]:.2f}"
 
-    # Baris 1 KPI: Indikator Keuangan & Fiskal
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         st.metric("Solvabilitas (Aktual)", get_actual_val(df_filtered, "solvabilitas"))
@@ -212,7 +195,6 @@ with tab1:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Baris 2 KPI: Kepatuhan & Status Opini BPK
     m5, m6, m7, m8 = st.columns(4)
     with m5:
         val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean() if "TLRHP Y-1_Sesuai" in df_filtered.columns and not df_filtered.empty else None
@@ -221,21 +203,18 @@ with tab1:
         val_rugi = df_filtered["%lunas_rugi(t-1)"].mean() if "%lunas_rugi(t-1)" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Penyelesaian Ganti Rugi (%)", f"{val_rugi:.2f}%" if pd.notnull(val_rugi) else "-")
     with m7:
-        # Opini BPK Aktual (Opini Y)
         if not df_filtered.empty and "Opini Y" in df_filtered.columns:
             opini_aktual = df_filtered["Opini Y"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini Y"].mode()[0]
         else:
             opini_aktual = "-"
         st.metric("Opini BPK Aktual (Opini Y)", opini_aktual)
     with m8:
-        # Prediksi Opini BPK dari Logistic Regression
         if not df_filtered.empty and "Prediksi Opini BPK (ML)" in df_filtered.columns:
             opini_pred = df_filtered["Prediksi Opini BPK (ML)"].iloc[0] if len(df_filtered) == 1 else df_filtered["Prediksi Opini BPK (ML)"].mode()[0]
         else:
             opini_pred = "-"
         st.metric("Prediksi Opini BPK (ML)", opini_pred)
 
-    # Detail Model & Tabel Perbandingan Prediksi
     if model_accuracy is not None:
         with st.expander("ℹ️ Detail Model Logistic Regression & Perbandingan Prediksi"):
             st.write(f"**Akurasi Model Training Logistic Regression:** {model_accuracy * 100:.2f}%")
@@ -261,7 +240,6 @@ with tab1:
 
     st.markdown("---")
 
-    # SECTION SCATTER PLOT KORELASI BELANJA
     st.subheader("🔍 Analisis Scatterplot Korelasi Belanja vs Indikator Keuangan")
 
     if not df_filtered.empty:
@@ -342,25 +320,88 @@ with tab2:
             st.plotly_chart(fig_ikf, use_container_width=True)
 
 # ---------------------------------------------------------
-# TAB 3: GRAFIK KLUSTER PEMDA
+# TAB 3: VISUALISASI KLASTER PEMDA (K-MEANS)
 # ---------------------------------------------------------
 with tab3:
-    st.subheader("🎯 Visualisasi Kluster Pemda")
-    if not df_filtered.empty:
-        col_c1, col_c2 = st.columns([3, 1])
-        with col_c2:
-            x_axis = st.selectbox("Sumbu X:", ["IKF", "DCC", "solvabilitas", "likuiditas", "TLRHP Y-1_Sesuai"], index=0)
-            y_axis = st.selectbox("Sumbu Y:", ["likuiditas", "solvabilitas", "DCC", "IKF", "%lunas_rugi(t-1)"], index=0)
+    st.subheader("🎯 Klasterisasi Pemda Menggunakan K-Means")
+    st.markdown("Pengelompokan Pemda berdasarkan 8 indikator keuangan & kepatuhan utama.")
+
+    # Filter Khusus Tahun di Tab 3
+    if "Tahun" in df.columns:
+        year_options_tab3 = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
+        selected_year_tab3 = st.radio(
+            "🗓️ Filter Tahun Khusus Klasterisasi:",
+            options=year_options_tab3,
+            index=0,
+            horizontal=True,
+            key="radio_tahun_tab3"
+        )
         
-        with col_c1:
-            fig_cluster = px.scatter(
-                df_filtered,
-                x=x_axis,
-                y=y_axis,
-                color="Kluster" if "Kluster" in df_filtered.columns else "Opini Y",
-                symbol="Opini Y",
-                hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
-                title=f"Pemetaan Kluster Pemda ({x_axis} vs {y_axis})"
-            )
-            fig_cluster.update_traces(marker=dict(size=12, opacity=0.8))
-            st.plotly_chart(fig_cluster, use_container_width=True)
+        if selected_year_tab3 != "Semua Tahun":
+            try:
+                df_tab3 = df[df["Tahun"] == int(selected_year_tab3)].copy()
+            except ValueError:
+                df_tab3 = df[df["Tahun"] == selected_year_tab3].copy()
+        else:
+            df_tab3 = df.copy()
+    else:
+        df_tab3 = df.copy()
+
+    # Variabel Pilihan untuk K-Means & Visualisasi
+    kmeans_vars = [
+        "IKF", "DCC", "solvabilitas", "likuiditas", 
+        "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"
+    ]
+    
+    available_km_vars = [v for v in kmeans_vars if v in df_tab3.columns]
+
+    if len(available_km_vars) == len(kmeans_vars) and not df_tab3.empty:
+        df_km = df_tab3.dropna(subset=available_km_vars).copy()
+        
+        if len(df_km) >= 3:
+            # Pengaturan K-Means
+            c_config1, c_config2 = st.columns([1, 3])
+            with c_config1:
+                n_clusters = st.slider("Jumlah Kluster (k):", min_value=2, max_value=5, value=3)
+            
+            # Proses Standardisasi & K-Means Clustering
+            scaler = StandardScaler()
+            scaled_data = scaler.fit_transform(df_km[available_km_vars])
+            
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            df_km["Cluster_KMeans"] = kmeans.fit_predict(scaled_data)
+            df_km["Cluster_Label"] = df_km["Cluster_KMeans"].apply(lambda x: f"Kluster {x+1}")
+
+            st.markdown("---")
+            
+            col_km_left, col_km_right = st.columns([1, 3])
+            
+            # Sumbu X & Y Menggunakan Radio Buttons
+            with col_km_left:
+                st.markdown("**Pengaturan Sumbu Scatterplot:**")
+                x_km = st.radio("Sumbu X:", available_km_vars, index=0, key="radio_km_x")
+                y_km = st.radio("Sumbu Y:", available_km_vars, index=1, key="radio_km_y")
+            
+            with col_km_right:
+                fig_km = px.scatter(
+                    df_km,
+                    x=x_km,
+                    y=y_km,
+                    color="Cluster_Label",
+                    symbol="Opini Y",
+                    hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
+                    title=f"Scatterplot Hasil Klasterisasi K-Means ({x_km} vs {y_km})",
+                    color_discrete_sequence=px.colors.qualitative.Set1
+                )
+                fig_km.update_traces(marker=dict(size=12, opacity=0.85))
+                st.plotly_chart(fig_km, use_container_width=True)
+
+            # Tabel Detail Pemetaan Hasil Kluster
+            with st.expander("📋 Tabel Hasil Klasterisasi K-Means Pemda"):
+                cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini Y", "Prediksi Opini BPK (ML)"] + available_km_vars
+                existing_cols_display = [c for c in cols_display if c in df_km.columns]
+                st.dataframe(df_km[existing_cols_display], use_container_width=True)
+        else:
+            st.info("Jumlah data tidak cukup untuk menjalankan algoritma K-Means.")
+    else:
+        st.warning(f"Data tidak memiliki variabel lengkap untuk K-Means. Diperlukan: {', '.join(kmeans_vars)}")
