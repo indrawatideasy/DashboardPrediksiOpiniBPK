@@ -157,11 +157,14 @@ with tab1:
     if not df_filtered.empty:
         col_sc1, col_sc2 = st.columns(2)
 
+        # Opsi pilihan indikator keuangan
+        indikator_options = ["IKF", "DCC", "solvabilitas", "likuiditas"]
+
         # 1. Scatterplot Korelasi Belanja Pegawai (b_peg)
         with col_sc1:
             var_peg = st.radio(
                 "Pilih Variabel Korelasi Belanja Pegawai:",
-                ["IKF", "DCC"],
+                options=indikator_options,
                 key="radio_peg",
                 horizontal=True
             )
@@ -172,8 +175,8 @@ with tab1:
                 y=var_peg,
                 color="Tahun" if "Tahun" in df_filtered.columns else None,
                 hover_data=["Pemda", "Tahun", "Opini Y-1"],
-                title=f"Scatterplot: Belanja Pegawai (%) vs {var_peg}",
-                labels={"b_peg": "Belanja Pegawai (%)", var_peg: var_peg},
+                title=f"Scatterplot: Belanja Pegawai (%) vs {var_peg.capitalize()}",
+                labels={"b_peg": "Belanja Pegawai (%)", var_peg: var_peg.capitalize()},
                 trendline="ols"  # Menampilkan garis tren korelasi
             )
             fig_sc_peg.update_traces(marker=dict(size=10, opacity=0.8))
@@ -183,7 +186,7 @@ with tab1:
         with col_sc2:
             var_mdl = st.radio(
                 "Pilih Variabel Korelasi Belanja Modal:",
-                ["IKF", "DCC"],
+                options=indikator_options,
                 key="radio_mdl",
                 horizontal=True
             )
@@ -194,8 +197,8 @@ with tab1:
                 y=var_mdl,
                 color="Tahun" if "Tahun" in df_filtered.columns else None,
                 hover_data=["Pemda", "Tahun", "Opini Y-1"],
-                title=f"Scatterplot: Belanja Modal (%) vs {var_mdl}",
-                labels={"b_mdl": "Belanja Modal (%)", var_mdl: var_mdl},
+                title=f"Scatterplot: Belanja Modal (%) vs {var_mdl.capitalize()}",
+                labels={"b_mdl": "Belanja Modal (%)", var_mdl: var_mdl.capitalize()},
                 trendline="ols"  # Menampilkan garis tren korelasi
             )
             fig_sc_mdl.update_traces(marker=dict(size=10, opacity=0.8))
