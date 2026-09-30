@@ -7,12 +7,12 @@ import plotly.express as px
 # Configuration & Page Setup
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Analisis Opini Pemda",
+    page_title="Dashboard Analisis Opini Pemda Sumsel",
     page_icon="📊",
     layout="wide"
 )
 
-st.title("📊 Dashboard Analisis Kinerja & Opini Pemda")
+st.title("📊 Dashboard Analisis Kinerja & Opini Pemda (Sumatera Selatan)")
 
 # ---------------------------------------------------------
 # Sidebar: Upload File & 2 Radio Buttons Filter
@@ -21,31 +21,40 @@ st.sidebar.header("📁 Filter Data")
 
 uploaded_file = st.sidebar.file_uploader("Unggah File Excel/CSV", type=["xlsx", "xls", "csv"])
 
+# Daftar Pemda dan Tahun sesuai entitas di Sumsel
+LIST_PEMDA = [
+    "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
+    "Muba", "Mura", "Muratara", "OI", "OKI", "OKU", "OKUS", 
+    "OKUT", "Pagaralam", "Palembang", "Pali", "Prabumulih", "Sumsel"
+]
+LIST_TAHUN = [2021, 2022, 2023, 2024, 2025]
+
 @st.cache_data
 def generate_sample_data():
     np.random.seed(42)
-    n = 150
-    years = [2021, 2022, 2023, 2024]
-    pemda_list = [f"Pemda Kab/Kota {chr(65+i)}" for i in range(10)]
+    records = []
     opini_list = ["WTP", "WDP", "TW", "TMP"]
     
-    data = {
-        "Tahun": np.random.choice(years, size=n),
-        "Pemda": np.random.choice(pemda_list, size=n),
-        "IKF": np.round(np.random.uniform(0.2, 1.8, size=n), 3),
-        "DCC": np.round(np.random.uniform(30, 180, size=n), 2),
-        "solvabilitas": np.round(np.random.uniform(0.8, 3.5, size=n), 2),
-        "likuiditas": np.round(np.random.uniform(1.0, 5.0, size=n), 2),
-        "b_peg": np.round(np.random.uniform(25, 45, size=n), 2),
-        "b_brg": np.round(np.random.uniform(20, 40, size=n), 2),
-        "b_mdl": np.round(np.random.uniform(10, 30, size=n), 2),
-        "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98, size=n), 2),
-        "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95, size=n), 2),
-        "Opini Y-1": np.random.choice(opini_list, size=n, p=[0.70, 0.18, 0.08, 0.04]),
-        "Prediksi Opini BPK": np.random.choice(opini_list, size=n, p=[0.75, 0.15, 0.06, 0.04]),
-        "Kluster": np.random.choice(["Kluster 1 (Tinggi)", "Kluster 2 (Sedang)", "Kluster 3 (Rendah)"], size=n)
-    }
-    return pd.DataFrame(data)
+    # Generate data logis untuk 18 Pemda x 5 Tahun = 90 baris data
+    for thn in LIST_TAHUN:
+        for pmd in LIST_PEMDA:
+            records.append({
+                "Tahun": thn,
+                "Pemda": pmd,
+                "IKF": np.round(np.random.uniform(0.2, 1.8), 3),
+                "DCC": np.round(np.random.uniform(30, 180), 2),
+                "solvabilitas": np.round(np.random.uniform(0.8, 3.5), 2),
+                "likuiditas": np.round(np.random.uniform(1.0, 5.0), 2),
+                "b_peg": np.round(np.random.uniform(25, 45), 2),
+                "b_brg": np.round(np.random.uniform(20, 40), 2),
+                "b_mdl": np.round(np.random.uniform(10, 30), 2),
+                "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98), 2),
+                "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95), 2),
+                "Opini Y-1": np.random.choice(opini_list, p=[0.75, 0.15, 0.06, 0.04]),
+                "Prediksi Opini BPK": np.random.choice(opini_list, p=[0.80, 0.12, 0.05, 0.03]),
+                "Kluster": np.random.choice(["Kluster 1 (Kinerja Tinggi)", "Kluster 2 (Sedang)", "Kluster 3 (Perlu Perhatian)"])
+            })
+    return pd.DataFrame(records)
 
 # Load Data
 if uploaded_file is not None:
@@ -59,10 +68,10 @@ if uploaded_file is not None:
         st.sidebar.error(f"Gagal membaca file: {e}")
         df = generate_sample_data()
 else:
-    st.sidebar.info("Menggunakan sampel data bawaan.")
+    st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
     df = generate_sample_data()
 
-# Penyesuaian otomatis jika beberapa kolom kustom belum ada di file Excel
+# Penyesuaian otomatis jika beberapa kolom turunan belum ada di file Excel
 if "Opini Y-1" not in df.columns:
     df["Opini Y-1"] = np.random.choice(["WTP", "WDP", "TW", "TMP"], size=len(df), p=[0.7, 0.2, 0.07, 0.03])
 if "Prediksi Opini BPK" not in df.columns:
@@ -78,7 +87,7 @@ df_filtered = df.copy()
 # SIDEBAR RADIO BUTTON FILTERS (Hanya 2 Radio Button)
 # ---------------------------------------------------------
 
-# 1. Radio Button Filter Tahun
+# 1. Radio Button Filter Tahun (2021-2025)
 if "Tahun" in df.columns:
     available_years = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
     selected_year = st.sidebar.radio("🗓️ Pilih Tahun:", options=available_years, index=0)
@@ -89,7 +98,7 @@ if "Tahun" in df.columns:
         except ValueError:
             df_filtered = df_filtered[df_filtered["Tahun"] == selected_year]
 
-# 2. Radio Button Filter Pemda
+# 2. Radio Button Filter Pemda (18 Entitas Pemda Sumsel)
 if "Pemda" in df.columns:
     available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
     selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
@@ -184,7 +193,7 @@ with tab1:
 # TAB 2: TREN INDIKATOR KEUANGAN PER TAHUN
 # ---------------------------------------------------------
 with tab2:
-    st.subheader("📊 Tren Indikator Keuangan per Tahun")
+    st.subheader("📊 Tren Indikator Keuangan per Tahun (2021 - 2025)")
     
     if "Tahun" in df_filtered.columns and not df_filtered.empty:
         df_trend_fin = df_filtered.groupby("Tahun")[["likuiditas", "solvabilitas", "DCC", "IKF"]].mean().reset_index()
@@ -235,7 +244,7 @@ with tab2:
 # ---------------------------------------------------------
 with tab3:
     st.subheader("🎯 Visualisasi Kluster Pemda")
-    st.markdown("Pemetaan kelompok Pemda berdasarkan kombinasi Kapasitas Fiskal (IKF), Likuiditas, dan Status Kluster.")
+    st.markdown("Pemetaan kelompok Pemda berdasarkan indikator keuangan dan kepatuhan.")
     
     if not df_filtered.empty:
         col_c1, col_c2 = st.columns([3, 1])
