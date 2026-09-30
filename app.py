@@ -21,7 +21,7 @@ st.sidebar.header("📁 Filter Data")
 
 uploaded_file = st.sidebar.file_uploader("Unggah File Excel/CSV", type=["xlsx", "xls", "csv"])
 
-# Daftar Pemda dan Tahun sesuai entitas di Sumsel
+# Daftar Pemda dan Tahun sesuai entitas di Sumsel (2021-2025)
 LIST_PEMDA = [
     "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
     "Muba", "Mura", "Muratara", "OI", "OKI", "OKU", "OKUS", 
@@ -35,7 +35,6 @@ def generate_sample_data():
     records = []
     opini_list = ["WTP", "WDP", "TW", "TMP"]
     
-    # Generate data logis untuk 18 Pemda x 5 Tahun = 90 baris data
     for thn in LIST_TAHUN:
         for pmd in LIST_PEMDA:
             records.append({
@@ -71,7 +70,7 @@ else:
     st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
     df = generate_sample_data()
 
-# Penyesuaian otomatis jika beberapa kolom turunan belum ada di file Excel
+# Penyesuaian otomatis jika kolom turunan belum ada
 if "Opini Y-1" not in df.columns:
     df["Opini Y-1"] = np.random.choice(["WTP", "WDP", "TW", "TMP"], size=len(df), p=[0.7, 0.2, 0.07, 0.03])
 if "Prediksi Opini BPK" not in df.columns:
@@ -84,10 +83,8 @@ if "Kluster" not in df.columns:
 df_filtered = df.copy()
 
 # ---------------------------------------------------------
-# SIDEBAR RADIO BUTTON FILTERS (Hanya 2 Radio Button)
+# SIDEBAR RADIO BUTTON FILTERS
 # ---------------------------------------------------------
-
-# 1. Radio Button Filter Tahun (2021-2025)
 if "Tahun" in df.columns:
     available_years = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
     selected_year = st.sidebar.radio("🗓️ Pilih Tahun:", options=available_years, index=0)
@@ -98,7 +95,6 @@ if "Tahun" in df.columns:
         except ValueError:
             df_filtered = df_filtered[df_filtered["Tahun"] == selected_year]
 
-# 2. Radio Button Filter Pemda (18 Entitas Pemda Sumsel)
 if "Pemda" in df.columns:
     available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
     selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
@@ -121,7 +117,6 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
-    # Baris 1 KPI: Indikator Keuangan & Fiskal
     m1, m2, m3, m4 = st.columns(4)
     with m1:
         val_solv = df_filtered["solvabilitas"].mean()
@@ -138,7 +133,6 @@ with tab1:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Baris 2 KPI: Kepatuhan & Status Opini BPK
     m5, m6, m7, m8 = st.columns(4)
     with m5:
         val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean()
@@ -155,14 +149,13 @@ with tab1:
 
     st.markdown("---")
 
-    # Grafik Tren Proporsi Belanja
-    st.subheader("📈 Tren Korelasi Proporsi Belanja (Dari Tahun ke Tahun)")
+    # Grafik Tren Proporsi Belanja (Modal & Barang)
+    st.subheader("📈 Tren Proporsi Belanja Modal & Barang")
 
     if "Tahun" in df_filtered.columns and not df_filtered.empty:
-        df_trend_belanja = df_filtered.groupby("Tahun")[["b_mdl", "b_brg", "b_peg"]].mean().reset_index()
+        df_trend_belanja = df_filtered.groupby("Tahun")[["b_mdl", "b_brg"]].mean().reset_index()
         
-        col_g1, col_g2, col_g3 = st.columns(3)
-        
+        col_g1, col_g2 = st.columns(2)
         with col_g1:
             fig_mdl = px.line(
                 df_trend_belanja, x="Tahun", y="b_mdl", markers=True,
@@ -178,16 +171,50 @@ with tab1:
             )
             fig_brg.update_traces(line_color="#3498db", line_width=3)
             st.plotly_chart(fig_brg, use_container_width=True)
-            
-        with col_g3:
-            fig_peg = px.line(
-                df_trend_belanja, x="Tahun", y="b_peg", markers=True,
-                title="Belanja Pegawai (b_peg)", labels={"b_peg": "Proporsi (%)"}
-            )
-            fig_peg.update_traces(line_color="#e67e22", line_width=3)
-            st.plotly_chart(fig_peg, use_container_width=True)
     else:
-        st.info("Data tidak cukup untuk menampilkan tren tahunan.")
+        st.info("Data tidak cukup untuk menampilkan tren belanja modal dan barang.")
+
+    st.markdown("---")
+
+    # Bagian Khusus: 2 Grafik Belanja Pegawai + Filter Korelasi IKF / DCC
+    st.subheader("📈 Analisis & Korelasi Belanja Pegawai dengan IKF / DCC")
+    
+    col_f1, col_f2 = st.columns([1, 3])
+    with col_f1:
+        var_korelasi = st.selectbox("Pilih Variabel Korelasi:", ["IKF", "DCC"], index=0)
+
+    if "Tahun" in df_filtered.columns and not df_filtered.empty:
+        df_korelasi = df_filtered.groupby("Tahun")[["b_peg", var_korelasi]].mean().reset_index()
+        
+        col_k1, col_k2 = st.columns(2)
+        
+        with col_k1:
+            fig_bp1 = px.line(
+                df_korelasi, x="Tahun", y="b_peg", markers=True,
+                title="Tren Belanja Pegawai (Grafik 1)", labels={"b_peg": "Proporsi (%)"}
+            )
+            fig_bp1.update_traces(line_color="#e67e22", line_width=3)
+            st.plotly_chart(fig_bp1, use_container_width=True)
+            
+        with col_k2:
+            fig_bp2 = px.line(
+                df_korelasi, x="Tahun", y=var_korelasi, markers=True,
+                title=f"Tren Variabel {var_korelasi} (Grafik 2)", labels={var_korelasi: var_korelasi}
+            )
+            fig_bp2.update_traces(line_color="#9b59b6", line_width=3)
+            st.plotly_chart(fig_bp2, use_container_width=True)
+            
+        # Scatter Plot Korelasi Langsung
+        fig_scatter_corr = px.scatter(
+            df_filtered, x="b_peg", y=var_korelasi, color="Tahun" if "Tahun" in df_filtered.columns else None,
+            hover_data=["Pemda", "Tahun"],
+            title=f"Scatter Plot Korelasi: Belanja Pegawai vs {var_korelasi}",
+            labels={"b_peg": "Belanja Pegawai (%)", var_korelasi: var_korelasi}
+        )
+        fig_scatter_corr.update_traces(marker=dict(size=10, opacity=0.8))
+        st.plotly_chart(fig_scatter_corr, use_container_width=True)
+    else:
+        st.info("Data tidak cukup untuk menampilkan korelasi belanja pegawai.")
 
 # ---------------------------------------------------------
 # TAB 2: TREN INDIKATOR KEUANGAN PER TAHUN
@@ -201,7 +228,6 @@ with tab2:
         col_t1, col_t2 = st.columns(2)
         col_t3, col_t4 = st.columns(2)
         
-        # 1. Likuiditas per Tahun
         with col_t1:
             fig_lik = px.line(
                 df_trend_fin, x="Tahun", y="likuiditas", markers=True,
@@ -210,7 +236,6 @@ with tab2:
             fig_lik.update_traces(line_color="#2ecc71", line_width=3)
             st.plotly_chart(fig_lik, use_container_width=True)
             
-        # 2. Solvabilitas per Tahun
         with col_t2:
             fig_solv = px.line(
                 df_trend_fin, x="Tahun", y="solvabilitas", markers=True,
@@ -219,7 +244,6 @@ with tab2:
             fig_solv.update_traces(line_color="#e74c3c", line_width=3)
             st.plotly_chart(fig_solv, use_container_width=True)
             
-        # 3. DCC per Tahun
         with col_t3:
             fig_dcc = px.line(
                 df_trend_fin, x="Tahun", y="DCC", markers=True,
@@ -228,7 +252,6 @@ with tab2:
             fig_dcc.update_traces(line_color="#9b59b6", line_width=3)
             st.plotly_chart(fig_dcc, use_container_width=True)
             
-        # 4. IKF per Tahun
         with col_t4:
             fig_ikf = px.line(
                 df_trend_fin, x="Tahun", y="IKF", markers=True,
