@@ -150,7 +150,7 @@ if "Tahun" in df.columns:
 
 if "Pemda" in df.columns:
     available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
-    selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
+    selected_pemda = st.sidebar.radio("🏛️️ Pilih Pemda:", options=available_pemda, index=0)
     
     if selected_pemda != "Semua Pemda":
         df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
@@ -362,7 +362,7 @@ with tab3:
         selected_kmeans_vars = st.multiselect(
             "📌 Pilih variabel individual untuk Algoritma K-Means (Pilih minimal 2):",
             options=available_ind_vars,
-            default=["IKF", "DCC", "solvabilitas", "likuiditas"], # Default 4 variabel awal
+            default=["IKF", "DCC", "solvabilitas", "likuiditas"],
             key="multiselect_kmeans_ind"
         )
 
@@ -376,7 +376,7 @@ with tab3:
         df_km = df_tab3.dropna(subset=selected_kmeans_vars).copy()
         
         if len(df_km) >= n_clusters:
-            # 1. Standardisasi Data dari Variabel Individual Terpilih
+            # 1. Standardisasi Data dari Variabel Terpilih
             scaler = StandardScaler()
             scaled_data = scaler.fit_transform(df_km[selected_kmeans_vars])
             
@@ -391,13 +391,12 @@ with tab3:
             x_km = selected_kmeans_vars[0]
             y_km = selected_kmeans_vars[1]
 
-            # Visualisasi Scatterplot Hasil Klasterisasi
+            # Visualisasi Scatterplot Hasil Klasterisasi (Hanya berdasarkan Cluster_Label)
             fig_km = px.scatter(
                 df_km,
                 x=x_km,
                 y=y_km,
                 color="Cluster_Label",
-                symbol="Opini Y",
                 hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
                 title=f"Scatterplot Hasil Klasterisasi K-Means ({x_km} vs {y_km})",
                 color_discrete_sequence=px.colors.qualitative.Set1
