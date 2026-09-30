@@ -45,7 +45,7 @@ def generate_sample_data():
     
     for thn in LIST_TAHUN:
         for pmd in LIST_PEMDA:
-            # Generate opini aktual (1: WDP, 2: WTP PSH, 3: WTP)
+            # Generate opini aktual Opini Y (1: WDP, 2: WTP PSH, 3: WTP)
             opini_code = np.random.choice([1, 2, 3], p=[0.15, 0.25, 0.60])
             
             records.append({
@@ -60,8 +60,8 @@ def generate_sample_data():
                 "b_mdl": np.round(np.random.uniform(10, 30), 2),
                 "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98), 2),
                 "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95), 2),
-                "Opini Y-1_Kode": opini_code,
-                "Opini Y-1": OPINI_MAP[opini_code],
+                "Opini Y_Kode": opini_code,
+                "Opini Y": OPINI_MAP[opini_code],
                 "Kluster": np.random.choice(["Kluster 1 (Kinerja Tinggi)", "Kluster 2 (Sedang)", "Kluster 3 (Perlu Perhatian)"])
             })
     return pd.DataFrame(records)
@@ -81,59 +81,73 @@ else:
     st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
     df = generate_sample_data()
 
-# Penyesuaian & Standardisasi Kolom Opini Aktual
-if "Opini Y-1" not in df.columns:
-    if "Opini Y-1_Kode" in df.columns:
-        df["Opini Y-1"] = df["Opini Y-1_Kode"].map(OPINI_MAP)
+# Standardisasi Kolom Opini Y (Aktual)
+if "Opini Y" not in df.columns:
+    if "Opini Y-1" in df.columns:
+        df["Opini Y"] = df["Opini Y-1"]
+    elif "Opini Y_Kode" in df.columns:
+        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
     else:
-        df["Opini Y-1_Kode"] = np.random.choice([1, 2, 3], size=len(df), p=[0.15, 0.25, 0.60])
-        df["Opini Y-1"] = df["Opini Y-1_Kode"].map(OPINI_MAP)
-else:
-    # Jika kolom 'Opini Y-1' berisi angka 1, 2, 3
-    if set(df["Opini Y-1"].dropna().unique()).issubset({1, 2, 3}):
-        df["Opini Y-1_Kode"] = df["Opini Y-1"].astype(int)
-        df["Opini Y-1"] = df["Opini Y-1_Kode"].map(OPINI_MAP)
+        df["Opini Y_Kode"] = np.random.choice([1, 2, 3], size=len(df), p=[0.15, 0.25, 0.60])
+        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
+
+# Mapping Kode Angka untuk Opini Y
+if "Opini Y_Kode" not in df.columns:
+    if set(df["Opini Y"].dropna().unique()).issubset({1, 2, 3}):
+        df["Opini Y_Kode"] = df["Opini Y"].astype(int)
+        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
     else:
-        # Jika 'Opini Y-1' berisi teks, mapping balik ke angka
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
-        df["Opini Y-1_Kode"] = df["Opini Y-1"].map(reverse_map).fillna(3).astype(int)
+        df["Opini Y_Kode"] = df["Opini Y"].map(reverse_map).fillna(3).astype(int)
 
 if "Kluster" not in df.columns:
     df["Kluster"] = np.random.choice(["Kluster 1", "Kluster 2", "Kluster 3"], size=len(df))
 
 # ---------------------------------------------------------
 # ALGORITMA LOGISTIC REGRESSION UNTUK PREDIKSI OPINI BPK
+# Variabel yang Digunakan: IKF, DCC, solvabilitas, likuiditas, b_peg, b_mdl, TLRHP Y-1_Sesuai, %lunas_rugi(t-1)
 # ---------------------------------------------------------
-feature_cols = ["b_peg", "b_brg", "b_mdl", "IKF", "DCC", "solvabilitas", "likuiditas", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"]
+feature_cols = [
+    "IKF", 
+    "DCC", 
+    "solvabilitas", 
+    "likuiditas", 
+    "b_peg", 
+    "b_mdl", 
+    "TLRHP Y-1_Sesuai", 
+    "%lunas_rugi(t-1)"
+]
+
 available_features = [col for col in feature_cols if col in df.columns]
 
 model_accuracy = None
 class_report = None
 
-if len(available_features) > 0 and "Opini Y-1_Kode" in df.columns:
-    df_clean = df.dropna(subset=available_features + ["Opini Y-1_Kode"]).copy()
+if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
+    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
     
-    if len(df_clean) > 10:
+    if len(df_clean) > 5:
         X = df_clean[available_features]
-        y = df_clean["Opini Y-1_Kode"].astype(int)
+        y = df_clean["Opini Y_Kode"].astype(int)
         
-        # Inisialisasi dan Pelatihan Logistic Regression
+        # Pelatihan Logistic Regression
         model = LogisticRegression(max_iter=1000, random_state=42)
         model.fit(X, y)
         
-        # Prediksi Seluruh Dataset
+        # Prediksi Seluruh Dataset menggunakan Fitur Tertentu
         preds_code = model.predict(df[available_features].fillna(0))
         df["Prediksi_Kode"] = preds_code
-        df["Prediksi Opini BPK"] = df["Prediksi_Kode"].map(OPINI_MAP)
+        df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
         
         # Evaluasi Model
         y_pred = model.predict(X)
         model_accuracy = accuracy_score(y, y_pred)
         class_report = classification_report(y, y_pred, target_names=["WDP (1)", "WTP PSH (2)", "WTP (3)"], output_dict=True)
     else:
-        df["Prediksi Opini BPK"] = df["Opini Y-1"]
+        df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 else:
-    df["Prediksi Opini BPK"] = df["Opini Y-1"]
+    st.warning(f"Variabel untuk Logistic Regression tidak lengkap. Diperlukan: {', '.join(feature_cols)}")
+    df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
 
 df_filtered = df.copy()
 
@@ -172,46 +186,81 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
+    # Fungsi penolong mengambil nilai aktual
+    def get_actual_val(dataframe, col_name):
+        if col_name not in dataframe.columns or dataframe.empty:
+            return "-"
+        vals = dataframe[col_name].dropna()
+        if vals.empty:
+            return "-"
+        if len(vals) == 1:
+            return f"{vals.iloc[0]:.2f}"
+        else:
+            return f"{vals.iloc[-1]:.2f}"
+
     # Baris 1 KPI: Indikator Keuangan & Fiskal
     m1, m2, m3, m4 = st.columns(4)
     with m1:
-        val_solv = df_filtered["solvabilitas"].mean() if "solvabilitas" in df_filtered.columns else None
-        st.metric("Solvabilitas (Rata-rata)", f"{val_solv:.2f}" if pd.notnull(val_solv) else "-")
+        val_solv = get_actual_val(df_filtered, "solvabilitas")
+        st.metric("Solvabilitas (Aktual)", val_solv)
     with m2:
-        val_lik = df_filtered["likuiditas"].mean() if "likuiditas" in df_filtered.columns else None
-        st.metric("Likuiditas (Rata-rata)", f"{val_lik:.2f}" if pd.notnull(val_lik) else "-")
+        val_lik = get_actual_val(df_filtered, "likuiditas")
+        st.metric("Likuiditas (Aktual)", val_lik)
     with m3:
-        val_dcc = df_filtered["DCC"].mean() if "DCC" in df_filtered.columns else None
+        val_dcc = df_filtered["DCC"].mean() if "DCC" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Days Cash Coverage (DCC)", f"{val_dcc:.1f} Hari" if pd.notnull(val_dcc) else "-")
     with m4:
-        val_ikf = df_filtered["IKF"].mean() if "IKF" in df_filtered.columns else None
+        val_ikf = df_filtered["IKF"].mean() if "IKF" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Indeks Kemampuan Fiskal (IKF)", f"{val_ikf:.3f}" if pd.notnull(val_ikf) else "-")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Baris 2 KPI: Kepatuhan & Status Opini BPK
+    # Baris 2 KPI: Kepatuhan & Status Opini BPK (Aktual vs Prediksi ML)
     m5, m6, m7, m8 = st.columns(4)
     with m5:
-        val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean() if "TLRHP Y-1_Sesuai" in df_filtered.columns else None
+        val_tlrhp = df_filtered["TLRHP Y-1_Sesuai"].mean() if "TLRHP Y-1_Sesuai" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Penyelesaian TLRHP (%)", f"{val_tlrhp:.2f}%" if pd.notnull(val_tlrhp) else "-")
     with m6:
-        val_rugi = df_filtered["%lunas_rugi(t-1)"].mean() if "%lunas_rugi(t-1)" in df_filtered.columns else None
+        val_rugi = df_filtered["%lunas_rugi(t-1)"].mean() if "%lunas_rugi(t-1)" in df_filtered.columns and not df_filtered.empty else None
         st.metric("Penyelesaian Ganti Rugi (%)", f"{val_rugi:.2f}%" if pd.notnull(val_rugi) else "-")
     with m7:
-        # Opini BPK Aktual dari kolom Opini Y-1
-        opini_aktual = df_filtered["Opini Y-1"].mode()[0] if not df_filtered.empty and "Opini Y-1" in df_filtered.columns else "-"
-        st.metric("Opini BPK Aktual (Opini Y-1)", opini_aktual)
+        # Opini BPK Aktual (Opini Y)
+        if not df_filtered.empty and "Opini Y" in df_filtered.columns:
+            opini_aktual = df_filtered["Opini Y"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini Y"].mode()[0]
+        else:
+            opini_aktual = "-"
+        st.metric("Opini BPK Aktual (Opini Y)", opini_aktual)
     with m8:
-        # Hasil Prediksi Opini BPK dari Logistic Regression
-        opini_prediksi = df_filtered["Prediksi Opini BPK"].mode()[0] if not df_filtered.empty and "Prediksi Opini BPK" in df_filtered.columns else "-"
-        st.metric("Prediksi Opini BPK (ML)", opini_prediksi)
+        # Prediksi Opini BPK dari Model Logistic Regression
+        if not df_filtered.empty and "Prediksi Opini BPK (ML)" in df_filtered.columns:
+            opini_pred = df_filtered["Prediksi Opini BPK (ML)"].iloc[0] if len(df_filtered) == 1 else df_filtered["Prediksi Opini BPK (ML)"].mode()[0]
+        else:
+            opini_pred = "-"
+        st.metric("Prediksi Opini BPK (ML)", opini_pred)
 
-    # Informasi Evaluasi Model Logistic Regression
+    # Komparasi Detail & Performa Model Logistic Regression
     if model_accuracy is not None:
-        with st.expander("ℹ️ Detail Evaluasi Model Logistic Regression (Prediksi Opini BPK)"):
-            st.write(f"**Akurasi Model Training:** {model_accuracy * 100:.2f}%")
-            if class_report:
-                st.dataframe(pd.DataFrame(class_report).transpose().style.format("{:.2f}"))
+        with st.expander("ℹ️️ Perbandingan Detail: Opini Aktual vs Prediksi Logistic Regression"):
+            st.write(f"**Akurasi Logistic Regression (Model Training):** {model_accuracy * 100:.2f}%")
+            
+            col_exp1, col_exp2 = st.columns([1, 2])
+            with col_exp1:
+                st.markdown("**Laporan Klasifikasi:**")
+                if class_report:
+                    st.dataframe(pd.DataFrame(class_report).transpose().style.format("{:.2f}"))
+            
+            with col_exp2:
+                st.markdown("**Tabel Perbandingan Opini Aktual (Y) vs Prediksi (ML):**")
+                show_cols = ["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"]
+                existing_show_cols = [c for c in show_cols if c in df_filtered.columns]
+                
+                df_compare = df_filtered[existing_show_cols].copy()
+                df_compare["Status Evaluasi"] = np.where(
+                    df_compare["Opini Y"] == df_compare["Prediksi Opini BPK (ML)"], 
+                    "✅ Sesuai", 
+                    "❌ Beda"
+                )
+                st.dataframe(df_compare, use_container_width=True)
 
     st.markdown("---")
 
@@ -237,7 +286,7 @@ with tab1:
                 x="b_peg",
                 y=var_peg,
                 color="Tahun" if "Tahun" in df_filtered.columns else None,
-                hover_data=["Pemda", "Tahun", "Opini Y-1", "Prediksi Opini BPK"],
+                hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
                 title=f"Scatterplot: Belanja Pegawai (%) vs {var_peg.capitalize()}",
                 labels={"b_peg": "Belanja Pegawai (%)", var_peg: var_peg.capitalize()},
                 trendline="ols"
@@ -259,7 +308,7 @@ with tab1:
                 x="b_mdl",
                 y=var_mdl,
                 color="Tahun" if "Tahun" in df_filtered.columns else None,
-                hover_data=["Pemda", "Tahun", "Opini Y-1", "Prediksi Opini BPK"],
+                hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
                 title=f"Scatterplot: Belanja Modal (%) vs {var_mdl.capitalize()}",
                 labels={"b_mdl": "Belanja Modal (%)", var_mdl: var_mdl.capitalize()},
                 trendline="ols"
@@ -335,9 +384,9 @@ with tab3:
                 df_filtered,
                 x=x_axis,
                 y=y_axis,
-                color="Kluster" if "Kluster" in df_filtered.columns else "Opini Y-1",
-                symbol="Opini Y-1",
-                hover_data=["Pemda", "Tahun", "Opini Y-1", "Prediksi Opini BPK"],
+                color="Kluster" if "Kluster" in df_filtered.columns else "Opini Y",
+                symbol="Opini Y",
+                hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
                 title=f"Pemetaan Kluster Pemda ({x_axis} vs {y_axis})",
                 size="DCC" if "DCC" in df_filtered.columns else None
             )
