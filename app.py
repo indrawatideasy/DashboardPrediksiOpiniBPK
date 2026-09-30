@@ -150,7 +150,7 @@ if "Tahun" in df.columns:
 
 if "Pemda" in df.columns:
     available_pemda = ["Semua Pemda"] + sorted(list(df["Pemda"].dropna().unique()))
-    selected_pemda = st.sidebar.radio("🏛️️ Pilih Pemda:", options=available_pemda, index=0)
+    selected_pemda = st.sidebar.radio("🏛️ Pilih Pemda:", options=available_pemda, index=0)
     
     if selected_pemda != "Semua Pemda":
         df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
@@ -161,7 +161,7 @@ if "Pemda" in df.columns:
 tab1, tab2, tab3 = st.tabs([
     "📌 Ringkasan & Korelasi Belanja", 
     "📈 Tren Indikator Keuangan", 
-    "🎯 Kluster Pemda (K-Means)"
+    "🎯 Klaster Pemda (K-Means)"
 ])
 
 # ---------------------------------------------------------
@@ -324,7 +324,7 @@ with tab2:
 # ---------------------------------------------------------
 with tab3:
     st.subheader("🎯 Klasterisasi Pemda Menggunakan K-Means")
-    st.markdown("Pengelompokan Pemda berdasarkan 8 indikator keuangan & kepatuhan utama.")
+    st.markdown("Pilih variabel yang digunakan untuk pembentukan klaster (bisa lebih dari 2), lalu sesuaikan sumbu visualisasi.")
 
     # Filter Khusus Tahun di Tab 3
     if "Tahun" in df.columns:
@@ -347,40 +347,54 @@ with tab3:
     else:
         df_tab3 = df.copy()
 
-    # Variabel Pilihan untuk K-Means & Visualisasi
-    kmeans_vars = [
+    st.markdown("---")
+
+    # Seluruh variabel yang tersedia untuk K-Means
+    all_kmeans_vars = [
         "IKF", "DCC", "solvabilitas", "likuiditas", 
         "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"
     ]
-    
-    available_km_vars = [v for v in kmeans_vars if v in df_tab3.columns]
+    available_all_vars = [v for v in all_kmeans_vars if v in df_tab3.columns]
 
-    if len(available_km_vars) == len(kmeans_vars) and not df_tab3.empty:
-        df_km = df_tab3.dropna(subset=available_km_vars).copy()
+    # Panel Pengaturan Variabel K-Means & Jumlah Kluster
+    col_sel1, col_sel2 = st.columns([2, 1])
+    
+    with col_sel1:
+        selected_kmeans_vars = st.multiselect(
+            "📌 Pilih variabel yang digunakan untuk Algoritma K-Means (Bisa > 2 Variabel):",
+            options=available_all_vars,
+            default=available_all_vars  # Default memilih seluruh variabel
+        )
         
-        if len(df_km) >= 3:
-            # Pengaturan K-Means
-            c_config1, c_config2 = st.columns([1, 3])
-            with c_config1:
-                n_clusters = st.slider("Jumlah Kluster (k):", min_value=2, max_value=5, value=3)
-            
-            # Proses Standardisasi & K-Means Clustering
+    with col_sel2:
+        n_clusters = st.slider("Jumlah Kluster (k):", min_value=2, max_value=5, value=3)
+
+    # Validasi minimal 2 variabel dipilih untuk K-Means
+    if len(selected_kmeans_vars) < 2:
+        st.warning("⚠️ Harap pilih **minimal 2 variabel** untuk menjalankan klasterisasi K-Means.")
+    else:
+        df_km = df_tab3.dropna(subset=selected_kmeans_vars).copy()
+        
+        if len(df_km) >= n_clusters:
+            # 1. Standardisasi Data berdasarkan variabel-variabel pilihan
             scaler = StandardScaler()
-            scaled_data = scaler.fit_transform(df_km[available_km_vars])
+            scaled_data = scaler.fit_transform(df_km[selected_kmeans_vars])
             
+            # 2. Pembentukan Model K-Means dari N-Variabel
             kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
             df_km["Cluster_KMeans"] = kmeans.fit_predict(scaled_data)
             df_km["Cluster_Label"] = df_km["Cluster_KMeans"].apply(lambda x: f"Kluster {x+1}")
 
             st.markdown("---")
             
+            # Layout Pengaturan Sumbu Scatterplot Independen
             col_km_left, col_km_right = st.columns([1, 3])
             
-            # Sumbu X & Y Menggunakan Radio Buttons
             with col_km_left:
-                st.markdown("**Pengaturan Sumbu Scatterplot:**")
-                x_km = st.radio("Sumbu X:", available_km_vars, index=0, key="radio_km_x")
-                y_km = st.radio("Sumbu Y:", available_km_vars, index=1, key="radio_km_y")
+                st.markdown("**Pengaturan Sumbu Visualisasi:**")
+                # Pilih sumbu X dan Y dari seluruh variabel yang tersedia untuk proyeksi
+                x_km = st.radio("Proyeksi Sumbu X:", options=available_all_vars, index=0, key="radio_km_x")
+                y_km = st.radio("Proyeksi Sumbu Y:", options=available_all_vars, index=1, key="radio_km_y")
             
             with col_km_right:
                 fig_km = px.scatter(
@@ -390,7 +404,7 @@ with tab3:
                     color="Cluster_Label",
                     symbol="Opini Y",
                     hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
-                    title=f"Scatterplot Hasil Klasterisasi K-Means ({x_km} vs {y_km})",
+                    title=f"Proyeksi Hasil Klasterisasi K-Means ({x_km} vs {y_km})",
                     color_discrete_sequence=px.colors.qualitative.Set1
                 )
                 fig_km.update_traces(marker=dict(size=12, opacity=0.85))
@@ -398,10 +412,8 @@ with tab3:
 
             # Tabel Detail Pemetaan Hasil Kluster
             with st.expander("📋 Tabel Hasil Klasterisasi K-Means Pemda"):
-                cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini Y", "Prediksi Opini BPK (ML)"] + available_km_vars
+                cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini Y", "Prediksi Opini BPK (ML)"] + selected_kmeans_vars
                 existing_cols_display = [c for c in cols_display if c in df_km.columns]
                 st.dataframe(df_km[existing_cols_display], use_container_width=True)
         else:
-            st.info("Jumlah data tidak cukup untuk menjalankan algoritma K-Means.")
-    else:
-        st.warning(f"Data tidak memiliki variabel lengkap untuk K-Means. Diperlukan: {', '.join(kmeans_vars)}")
+            st.info("Jumlah data tidak cukup untuk menjalankan algoritma K-Means dengan k=" + str(n_clusters))
