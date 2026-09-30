@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import pickle
+import joblib
 import os
 
 # ---------------------------------------------------------
@@ -19,7 +19,7 @@ st.title("📊 Dashboard Analisis Kinerja & Opini Pemda (Sumatera Selatan)")
 # ---------------------------------------------------------
 # Load Pre-trained Model (.pkl)
 # ---------------------------------------------------------
-MODEL_PATH = "model_logistic_regression.pkl"  # Sesuaikan nama file .pkl Anda
+MODEL_PATH = "prediksi.pkl"  # Sesuaikan nama file .pkl Anda
 
 @st.cache_resource
 def load_trained_model(path):
