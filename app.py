@@ -57,7 +57,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Dashboard Analisis Kinerja & Opini Pemda (Sumatera Selatan)")
+st.title("Dashboard Advisory Keuangan Pemda Sumsel")
 
 # Pemetaan Indeks Opini
 OPINI_MAP = {
