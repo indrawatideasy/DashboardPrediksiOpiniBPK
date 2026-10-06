@@ -300,7 +300,7 @@ with tab1:
     with c4:
         v, d, g = compute_metric_with_delta("IKF")
         v_str = f"{v:.3f}" if v is not None else "-"
-        render_custom_card("Indeks Kemampuan Fiskal", v_str, d, g)
+        render_custom_card("Indeks Kemandirian Fiskal", v_str, d, g)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
