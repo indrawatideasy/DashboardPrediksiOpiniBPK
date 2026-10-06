@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, classification_report
 # Configuration & Page Setup
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Advisory Keuangan Pemda Sumsel",
+    page_title="Dashboard Advisory Keuangan Pemda",
     page_icon="📊",
     layout="wide"
 )
@@ -57,7 +57,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("Dashboard Advisory Keuangan Pemda Sumsel")
+st.title("Dashboard Advisory Keuangan Pemda")
 
 # Pemetaan Indeks Opini
 OPINI_MAP = {
@@ -212,12 +212,10 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
-    # Fungsi Menghitung Nilai Saat Ini vs Tahun Sebelumnya (t-1)
     def compute_metric_with_delta(col_name, is_dcc=False):
         if col_name not in df.columns or df_filtered.empty:
             return None, None, True
         
-        # Penentuan Dataset Tahun Lalu (t-1)
         if selected_pemda != "Semua Pemda":
             df_curr_pemda = df[df["Pemda"] == selected_pemda]
         else:
@@ -234,31 +232,24 @@ with tab1:
             curr_y = years[-1] if years else None
             prev_y = years[-2] if len(years) > 1 else None
 
-        # Nilai Tahun Ini
         df_curr = df_curr_pemda[df_curr_pemda["Tahun"] == curr_y] if curr_y else df_filtered
         val_curr = df_curr[col_name].mean() if not df_curr.empty else None
 
-        # Nilai Tahun Lalu
         val_prev = None
         if prev_y is not None:
             df_prev = df_curr_pemda[df_curr_pemda["Tahun"] == prev_y]
             if not df_prev.empty:
                 val_prev = df_prev[col_name].mean()
 
-        # Hitung Perubahan Delta
         delta = (val_curr - val_prev) if (val_curr is not None and val_prev is not None) else None
         
-        # Penentuan Status Baik (True/Hijau) vs Perlu Perhatian (False/Kuning)
         if is_dcc:
-            # Khusus DCC: Baik jika >= 30 Hari dan tidak mengalami penurunan parah
             is_good = (val_curr >= 30.0) if val_curr is not None else True
         else:
-            # Indikator Lain: Baik jika NAIK atau Tetap (Delta >= 0)
             is_good = (delta >= 0) if delta is not None else True
 
         return val_curr, delta, is_good
 
-    # Fungsi Render Card HTML
     def render_custom_card(title, value_str, delta, is_good, unit=""):
         card_class = "metric-card-green" if is_good else "metric-card-yellow"
         
@@ -280,50 +271,60 @@ with tab1:
         """
         st.markdown(html_code, unsafe_allow_html=True)
 
-    # BARIS 1: Solvabilitas, Likuiditas, DCC, IKF
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
+    # ---------------------------------------------------------
+    # BARIS 1: Solvabilitas, Likuiditas, Days Cash Coverage (3 Kolom)
+    # ---------------------------------------------------------
+    b1_c1, b1_c2, b1_c3 = st.columns(3)
+    with b1_c1:
         v, d, g = compute_metric_with_delta("solvabilitas")
         v_str = f"{v:.2f}" if v is not None else "-"
         render_custom_card("Solvabilitas (Aktual)", v_str, d, g)
         
-    with c2:
+    with b1_c2:
         v, d, g = compute_metric_with_delta("likuiditas")
         v_str = f"{v:.2f}" if v is not None else "-"
         render_custom_card("Likuiditas (Aktual)", v_str, d, g)
         
-    with c3:
+    with b1_c3:
         v, d, g = compute_metric_with_delta("DCC", is_dcc=True)
         v_str = f"{v:.1f} Hari" if v is not None else "-"
         render_custom_card("Days Cash Coverage (DCC)", v_str, d, g, unit=" Hari")
-        
-    with c4:
-        v, d, g = compute_metric_with_delta("IKF")
-        v_str = f"{v:.3f}" if v is not None else "-"
-        render_custom_card("Indeks Kemandirian Fiskal", v_str, d, g)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # BARIS 2: TLRHP, %Lunas Rugi, Opini BPK Aktual, Prediksi ML
-    c5, c6, c7, c8 = st.columns(4)
-    with c5:
+    # ---------------------------------------------------------
+    # BARIS 2: Indeks Kemampuan Fiskal, TLRHP, Penyelesaian Ganti Rugi (3 Kolom)
+    # ---------------------------------------------------------
+    b2_c1, b2_c2, b2_c3 = st.columns(3)
+    with b2_c1:
+        v, d, g = compute_metric_with_delta("IKF")
+        v_str = f"{v:.3f}" if v is not None else "-"
+        render_custom_card("Indeks Kemampuan Fiskal (IKF)", v_str, d, g)
+        
+    with b2_c2:
         v, d, g = compute_metric_with_delta("TLRHP Y-1_Sesuai")
         v_str = f"{v:.2f}%" if v is not None else "-"
-        render_custom_card("Penyelesaian TLRHP", v_str, d, g, unit="%")
+        render_custom_card("Penyelesaian TLRHP (%)", v_str, d, g, unit="%")
         
-    with c6:
+    with b2_c3:
         v, d, g = compute_metric_with_delta("%lunas_rugi(t-1)")
         v_str = f"{v:.2f}%" if v is not None else "-"
-        render_custom_card("Penyelesaian Ganti Rugi", v_str, d, g, unit="%")
-        
-    with c7:
+        render_custom_card("Penyelesaian Ganti Rugi (%)", v_str, d, g, unit="%")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ---------------------------------------------------------
+    # BARIS 3: Opini BPK Aktual & Prediksi Opini BPK (2 Kolom Seimbang)
+    # ---------------------------------------------------------
+    b3_c1, b3_c2 = st.columns(2)
+    with b3_c1:
         if not df_filtered.empty and "Opini Y" in df_filtered.columns:
             opini_aktual = df_filtered["Opini Y"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini Y"].mode()[0]
         else:
             opini_aktual = "-"
         st.metric("Opini BPK Aktual (Opini Y)", opini_aktual)
         
-    with c8:
+    with b3_c2:
         if not df_filtered.empty and "Prediksi Opini BPK (ML)" in df_filtered.columns:
             opini_pred = df_filtered["Prediksi Opini BPK (ML)"].iloc[0] if len(df_filtered) == 1 else df_filtered["Prediksi Opini BPK (ML)"].mode()[0]
         else:
