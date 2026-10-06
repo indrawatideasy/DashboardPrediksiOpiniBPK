@@ -11,7 +11,7 @@ from sklearn.metrics import accuracy_score, classification_report
 # Configuration & Page Setup
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Dashboard Analisis Opini Pemda Sumsel",
+    page_title="Dashboard Advisory Keuangan Pemda Sumsel",
     page_icon="📊",
     layout="wide"
 )
