@@ -220,13 +220,33 @@ if "Opini (Y)" not in df.columns:
     elif "Opini Y-1" in df.columns:
         df["Opini (Y)"] = df["Opini Y-1"]
 
-if "Opini Y_Kode" not in df.columns:
-    if set(df["Opini (Y)"].dropna().unique()).issubset({1, 2, 3}):
-        df["Opini Y_Kode"] = df["Opini (Y)"].astype(int)
-        df["Opini (Y)"] = df["Opini Y_Kode"].map(OPINI_MAP)
-    else:
+# ---------------------------------------------------------
+# FUNGSI NORMALISASI OPINI (MENGUBAH ANGKA SANGAT RIGID MENJADI TEKS OPINI)
+# ---------------------------------------------------------
+def normalize_opini(val):
+    if pd.isna(val):
+        return "WTP", 3
+    
+    s_val = str(val).strip().upper()
+    # Jika sudah berupa string nama opini
+    if s_val in ["WDP", "WTP PSH", "WTP"]:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
-        df["Opini Y_Kode"] = df["Opini (Y)"].map(reverse_map).fillna(3).astype(int)
+        return s_val, reverse_map[s_val]
+    
+    # Jika berupa angka/float/string angka (misal: 1, 2, 3, 1.0, "1", "2.0")
+    try:
+        num_val = int(float(s_val))
+        if num_val in OPINI_MAP:
+            return OPINI_MAP[num_val], num_val
+    except (ValueError, TypeError):
+        pass
+        
+    return "WTP", 3
+
+if "Opini (Y)" in df.columns:
+    normalized_res = df["Opini (Y)"].apply(normalize_opini)
+    df["Opini (Y)"] = [r[0] for r in normalized_res]
+    df["Opini Y_Kode"] = [r[1] for r in normalized_res]
 
 if "b_barjas" in df.columns and "b_brg" not in df.columns:
     df["b_brg"] = df["b_barjas"]
@@ -682,5 +702,3 @@ with tab3:
                 cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini (Y)", "Prediksi Opini BPK (ML)"] + [v for v in selected_kmeans_vars if v != "Opini (Y)"]
                 existing_cols_display = [c for c in cols_display if c in df_km.columns]
                 st.dataframe(df_km[existing_cols_display], use_container_width=True)
-        else:
-            st.info("Jumlah data tidak cukup untuk menjalankan algoritma K-Means dengan k=" + str(n_clusters))
