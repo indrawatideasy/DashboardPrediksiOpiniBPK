@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from sklearn.linear_model import LogisticRegression
+from sklearn.cluster import KMeans
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
@@ -230,7 +231,7 @@ if "b_barjas" in df.columns and "b_brg" not in df.columns:
     df["b_brg"] = df["b_barjas"]
 
 # ---------------------------------------------------------
-# SIDEBAR RADIO BUTTON FILTERS (GLOBAL) - INISIALISASI DINI
+# SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
 # ---------------------------------------------------------
 df_filtered = df.copy()
 
@@ -324,7 +325,7 @@ if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns
 else:
     df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
 
-# Update df_filtered setelah kolom prediksi ditambahkan
+# Synchronize df_filtered setelah kolom Prediksi dibuat
 if selected_year != "Semua Tahun":
     try:
         df_filtered = df[df["Tahun"] == int(selected_year)]
