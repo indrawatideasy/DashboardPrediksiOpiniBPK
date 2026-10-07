@@ -6,6 +6,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.metrics import accuracy_score, classification_report
 
 # ---------------------------------------------------------
 # Configuration & Page Setup
@@ -231,7 +234,7 @@ if "b_barjas" in df.columns and "b_brg" not in df.columns:
     df["b_brg"] = df["b_barjas"]
 
 # ---------------------------------------------------------
-# ALGORITMA LOGISTIC REGRESSION UNTUK PREDIKSI OPINI BPK
+# ALGORITMA LOGISTIC REGRESSION + HYPER TUNING (STRATIFIED)
 # ---------------------------------------------------------
 feature_cols = [
     "IKF", "DCC", "solvabilitas", "likuiditas", 
@@ -242,30 +245,74 @@ available_features = [col for col in feature_cols if col in df.columns]
 
 model_accuracy = None
 class_report = None
+best_params = None
 
 if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
+    # 1. Bersihkan nilai NaN
     df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
     
-    if len(df_clean) > 5:
-        X = df_clean[available_features]
-        y = df_clean["Opini Y_Kode"].astype(int)
-        
-        model = LogisticRegression(max_iter=1000, random_state=42)
-        model.fit(X, y)
-        
-        preds_code = model.predict(df[available_features].fillna(0))
-        df["Prediksi_Kode"] = preds_code
-        df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
-        
-        y_pred = model.predict(X)
-        model_accuracy = accuracy_score(y, y_pred)
-        class_report = classification_report(y, y_pred, target_names=["WDP (1)", "WTP PSH (2)", "WTP (3)"], output_dict=True)
+    # 2. Validasi kecukupan data & jumlah kelas unik (minimal 2 kelas)
+    if len(df_clean) > 5 and df_clean["Opini Y_Kode"].nunique() >= 2:
+        try:
+            X = df_clean[available_features]
+            y = df_clean["Opini Y_Kode"].astype(int)
+            
+            # Hitung sampel minimum per kelas untuk menentukan n_splits StratifiedKFold
+            min_class_samples = y.value_counts().min()
+            n_splits = max(2, min(5, min_class_samples))
+            
+            # Strategi Pembagian Data: StratifiedKFold
+            stratified_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            
+            # Grid Parameter untuk Hyperparameter Tuning
+            param_grid = {
+                'C': [0.01, 0.1, 1.0, 10.0],
+                'penalty': ['l1', 'l2'],
+                'solver': ['liblinear']
+            }
+            
+            base_model = LogisticRegression(max_iter=1000, random_state=42)
+            
+            # Eksekusi GridSearchCV dengan StratifiedKFold
+            grid_search = GridSearchCV(
+                estimator=base_model,
+                param_grid=param_grid,
+                cv=stratified_cv,
+                scoring='accuracy',
+                n_jobs=-1
+            )
+            
+            grid_search.fit(X, y)
+            
+            # Model Terbaik Hasil Tuning
+            best_model = grid_search.best_estimator_
+            best_params = grid_search.best_params_
+            
+            # Prediksi Seluruh Dataset
+            preds_code = best_model.predict(df[available_features].fillna(0))
+            df["Prediksi_Kode"] = preds_code
+            df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
+            
+            # Evaluasi Akurasi
+            y_pred = best_model.predict(X)
+            model_accuracy = accuracy_score(y, y_pred)
+            
+            # Format Laporan Klasifikasi
+            unique_classes = sorted(y.unique())
+            target_labels = [f"{OPINI_MAP[c]} ({c})" for c in unique_classes if c in OPINI_MAP]
+            
+            class_report = classification_report(
+                y, y_pred, 
+                target_names=target_labels if len(target_labels) == len(unique_classes) else None, 
+                output_dict=True
+            )
+        except Exception as err:
+            st.sidebar.warning(f"Hyperparameter Tuning Logistic Regression gagal: {err}")
+            df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
     else:
         df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
 else:
     df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
-
-df_filtered = df.copy()
 
 # ---------------------------------------------------------
 # SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
