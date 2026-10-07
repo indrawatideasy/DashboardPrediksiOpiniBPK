@@ -133,20 +133,63 @@ def generate_sample_data():
     for thn in LIST_TAHUN:
         for pmd in LIST_PEMDA:
             opini_code = np.random.choice([1, 2, 3], p=[0.15, 0.25, 0.60])
+            
+            ikf = np.round(np.random.uniform(0.2, 1.8), 3)
+            ikf_y1 = np.round(ikf * np.random.uniform(0.9, 1.1), 3)
+            grw_ikf = np.round(((ikf - ikf_y1) / ikf_y1) * 100, 2)
+
+            dcc = np.round(np.random.uniform(30, 180), 2)
+            dcc_y1 = np.round(dcc * np.random.uniform(0.85, 1.15), 2)
+            grw_dcc = np.round(((dcc - dcc_y1) / dcc_y1) * 100, 2)
+
+            solv = np.round(np.random.uniform(0.8, 3.5), 2)
+            solv_y1 = np.round(solv * np.random.uniform(0.9, 1.1), 2)
+            grw_solv = np.round(((solv - solv_y1) / solv_y1) * 100, 2)
+
+            lik = np.round(np.random.uniform(1.0, 5.0), 2)
+            lik_y1 = np.round(lik * np.random.uniform(0.9, 1.1), 2)
+            grw_lik = np.round(((lik - lik_y1) / lik_y1) * 100, 2)
+
+            b_peg = np.round(np.random.uniform(25, 45), 2)
+            b_peg_y1 = np.round(b_peg * np.random.uniform(0.95, 1.05), 2)
+            grw_bpeg = np.round(((b_peg - b_peg_y1) / b_peg_y1) * 100, 2)
+
+            b_barjas = np.round(np.random.uniform(20, 40), 2)
+            b_barjas_y1 = np.round(b_barjas * np.random.uniform(0.95, 1.05), 2)
+            grw_bbarjas = np.round(((b_barjas - b_barjas_y1) / b_barjas_y1) * 100, 2)
+
+            b_mdl = np.round(np.random.uniform(10, 30), 2)
+            b_mdl_y1 = np.round(b_mdl * np.random.uniform(0.9, 1.1), 2)
+            grw_bmdl = np.round(((b_mdl - b_mdl_y1) / b_mdl_y1) * 100, 2)
+
             records.append({
                 "Tahun": thn,
                 "Pemda": pmd,
-                "IKF": np.round(np.random.uniform(0.2, 1.8), 3),
-                "DCC": np.round(np.random.uniform(30, 180), 2),
-                "solvabilitas": np.round(np.random.uniform(0.8, 3.5), 2),
-                "likuiditas": np.round(np.random.uniform(1.0, 5.0), 2),
-                "b_peg": np.round(np.random.uniform(25, 45), 2),
-                "b_brg": np.round(np.random.uniform(20, 40), 2),
-                "b_mdl": np.round(np.random.uniform(10, 30), 2),
+                "b_barjas": b_barjas,
+                "b_barjas Y-1": b_barjas_y1,
+                "%Grwthb_barjas": grw_bbarjas,
+                "IKF": ikf,
+                "IKF Y-1": ikf_y1,
+                "%GrwthIKF": grw_ikf,
+                "DCC": dcc,
+                "DCC Y-1": dcc_y1,
+                "%GrwthDCC": grw_dcc,
+                "solvabilitas": solv,
+                "Solv Y-1": solv_y1,
+                "%GrwthSolv": grw_solv,
+                "likuiditas": lik,
+                "Likuiditas Y-1": lik_y1,
+                "%GrwtLikuid": grw_lik,
+                "b_peg": b_peg,
+                "b_peg Y-1": b_peg_y1,
+                "%Grwthb_peg": grw_bpeg,
+                "b_mdl": b_mdl,
+                "b_modal Y-1": b_mdl_y1,
+                "%GrwthB_modal": grw_bmdl,
                 "TLRHP Y-1_Sesuai": np.round(np.random.uniform(50, 98), 2),
                 "%lunas_rugi(t-1)": np.round(np.random.uniform(20, 95), 2),
-                "Opini Y_Kode": opini_code,
-                "Opini Y": OPINI_MAP[opini_code]
+                "Opini Y-1": OPINI_MAP[np.random.choice([1, 2, 3])],
+                "Opini (Y)": OPINI_MAP[opini_code]
             })
     return pd.DataFrame(records)
 
@@ -165,23 +208,27 @@ else:
     st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
     df = generate_sample_data()
 
-# Standardisasi Kolom Opini Y (Aktual)
-if "Opini Y" not in df.columns:
-    if "Opini Y-1" in df.columns:
-        df["Opini Y"] = df["Opini Y-1"]
-    elif "Opini Y_Kode" in df.columns:
-        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
-    else:
-        df["Opini Y_Kode"] = np.random.choice([1, 2, 3], size=len(df), p=[0.15, 0.25, 0.60])
-        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
+# Clean Kolom Nama agar bebas dari spasi ekstra (seperti ' b_barjas Y-1 ')
+df.columns = df.columns.str.strip()
+
+# Standardisasi Penamaan Kolom Opini Y & Belanja Barang
+if "Opini (Y)" not in df.columns:
+    if "Opini Y" in df.columns:
+        df["Opini (Y)"] = df["Opini Y"]
+    elif "Opini Y-1" in df.columns:
+        df["Opini (Y)"] = df["Opini Y-1"]
 
 if "Opini Y_Kode" not in df.columns:
-    if set(df["Opini Y"].dropna().unique()).issubset({1, 2, 3}):
-        df["Opini Y_Kode"] = df["Opini Y"].astype(int)
-        df["Opini Y"] = df["Opini Y_Kode"].map(OPINI_MAP)
+    if set(df["Opini (Y)"].dropna().unique()).issubset({1, 2, 3}):
+        df["Opini Y_Kode"] = df["Opini (Y)"].astype(int)
+        df["Opini (Y)"] = df["Opini Y_Kode"].map(OPINI_MAP)
     else:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
-        df["Opini Y_Kode"] = df["Opini Y"].map(reverse_map).fillna(3).astype(int)
+        df["Opini Y_Kode"] = df["Opini (Y)"].map(reverse_map).fillna(3).astype(int)
+
+# Alias b_barjas ke b_brg (jika modul lama membutuhkannya)
+if "b_barjas" in df.columns and "b_brg" not in df.columns:
+    df["b_brg"] = df["b_barjas"]
 
 # ---------------------------------------------------------
 # ALGORITMA LOGISTIC REGRESSION UNTUK PREDIKSI OPINI BPK
@@ -214,9 +261,9 @@ if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns
         model_accuracy = accuracy_score(y, y_pred)
         class_report = classification_report(y, y_pred, target_names=["WDP (1)", "WTP PSH (2)", "WTP (3)"], output_dict=True)
     else:
-        df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
+        df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
 else:
-    df["Prediksi Opini BPK (ML)"] = df["Opini Y"]
+    df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
 
 df_filtered = df.copy()
 
@@ -257,36 +304,21 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("📌 Ringkasan Indikator Keuangan & Kepatuhan")
 
-    def compute_metric_with_delta(col_name, is_dcc=False):
-        if col_name not in df.columns or df_filtered.empty:
+    def compute_metric_with_delta(col_curr, col_y1=None, col_grwth=None, is_dcc=False):
+        if col_curr not in df.columns or df_filtered.empty:
             return None, None, True
         
-        if selected_pemda != "Semua Pemda":
-            df_curr_pemda = df[df["Pemda"] == selected_pemda]
+        val_curr = df_filtered[col_curr].mean()
+        
+        # 1. Jika ada kolom %Grwth langsung di dataset terbaru
+        if col_grwth in df_filtered.columns and not df_filtered[col_grwth].dropna().empty:
+            delta = df_filtered[col_grwth].mean()
+        # 2. Jika ada kolom Y-1 langsung
+        elif col_y1 in df_filtered.columns and not df_filtered[col_y1].dropna().empty:
+            val_prev = df_filtered[col_y1].mean()
+            delta = val_curr - val_prev
         else:
-            df_curr_pemda = df
-            
-        if selected_year != "Semua Tahun":
-            try:
-                curr_y = int(selected_year)
-            except ValueError:
-                curr_y = selected_year
-            prev_y = curr_y - 1 if isinstance(curr_y, int) else None
-        else:
-            years = sorted(df_curr_pemda["Tahun"].dropna().unique())
-            curr_y = years[-1] if years else None
-            prev_y = years[-2] if len(years) > 1 else None
-
-        df_curr = df_curr_pemda[df_curr_pemda["Tahun"] == curr_y] if curr_y else df_filtered
-        val_curr = df_curr[col_name].mean() if not df_curr.empty else None
-
-        val_prev = None
-        if prev_y is not None:
-            df_prev = df_curr_pemda[df_curr_pemda["Tahun"] == prev_y]
-            if not df_prev.empty:
-                val_prev = df_prev[col_name].mean()
-
-        delta = (val_curr - val_prev) if (val_curr is not None and val_prev is not None) else None
+            delta = None
         
         if is_dcc:
             is_good = (val_curr >= 30.0) if val_curr is not None else True
@@ -338,17 +370,17 @@ with tab1:
     # BARIS 1: Solvabilitas, Likuiditas, Days Cash Coverage
     b1_c1, b1_c2, b1_c3 = st.columns(3)
     with b1_c1:
-        v, d, g = compute_metric_with_delta("solvabilitas")
+        v, d, g = compute_metric_with_delta("solvabilitas", "Solv Y-1", "%GrwthSolv")
         v_str = f"{v:.2f}" if v is not None else "-"
         render_custom_card("Solvabilitas (Aktual)", v_str, d, g)
         
     with b1_c2:
-        v, d, g = compute_metric_with_delta("likuiditas")
+        v, d, g = compute_metric_with_delta("likuiditas", "Likuiditas Y-1", "%GrwtLikuid")
         v_str = f"{v:.2f}" if v is not None else "-"
         render_custom_card("Likuiditas (Aktual)", v_str, d, g)
         
     with b1_c3:
-        v, d, g = compute_metric_with_delta("DCC", is_dcc=True)
+        v, d, g = compute_metric_with_delta("DCC", "DCC Y-1", "%GrwthDCC", is_dcc=True)
         v_str = f"{v:.1f} Hari" if v is not None else "-"
         render_custom_card("Days Cash Coverage (DCC)", v_str, d, g, unit=" Hari")
 
@@ -357,7 +389,7 @@ with tab1:
     # BARIS 2: Indeks Kemampuan Fiskal, TLRHP, Penyelesaian Ganti Rugi
     b2_c1, b2_c2, b2_c3 = st.columns(3)
     with b2_c1:
-        v, d, g = compute_metric_with_delta("IKF")
+        v, d, g = compute_metric_with_delta("IKF", "IKF Y-1", "%GrwthIKF")
         v_str = f"{v:.3f}" if v is not None else "-"
         render_custom_card("Indeks Kemampuan Fiskal (IKF)", v_str, d, g)
         
@@ -376,8 +408,8 @@ with tab1:
     # BARIS 3: Opini BPK Aktual & Prediksi ML
     b3_c1, b3_c2 = st.columns(2)
     with b3_c1:
-        if not df_filtered.empty and "Opini Y" in df_filtered.columns:
-            opini_aktual = df_filtered["Opini Y"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini Y"].mode()[0]
+        if not df_filtered.empty and "Opini (Y)" in df_filtered.columns:
+            opini_aktual = df_filtered["Opini (Y)"].iloc[0] if len(df_filtered) == 1 else df_filtered["Opini (Y)"].mode()[0]
         else:
             opini_aktual = "-"
         render_opini_card("Opini BPK Aktual (Opini Y)", opini_aktual)
@@ -401,12 +433,12 @@ with tab1:
             
             with col_exp2:
                 st.markdown("**Tabel Hasil Prediksi vs Opini Aktual:**")
-                show_cols = ["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"]
+                show_cols = ["Pemda", "Tahun", "Opini (Y)", "Prediksi Opini BPK (ML)"]
                 existing_show_cols = [c for c in show_cols if c in df_filtered.columns]
                 
                 df_compare = df_filtered[existing_show_cols].copy()
                 df_compare["Status Evaluasi"] = np.where(
-                    df_compare["Opini Y"] == df_compare["Prediksi Opini BPK (ML)"], 
+                    df_compare["Opini (Y)"] == df_compare["Prediksi Opini BPK (ML)"], 
                     "✅ Sesuai", 
                     "❌ Beda"
                 )
@@ -420,7 +452,6 @@ with tab1:
     st.subheader("🔍 Analisis Scatterplot Korelasi Belanja vs Indikator Keuangan")
 
     if not df_filtered.empty:
-        # Combo Selection untuk Variabel Indikator Keuangan
         col_c_sel, col_dummy = st.columns([2, 2])
         with col_c_sel:
             selected_korelasi_var = st.selectbox(
@@ -436,10 +467,10 @@ with tab1:
             fig_sc_peg = px.scatter(
                 df_filtered,
                 x="Tahun",
-                y="b_peg",
+                y="b_peg" if "b_peg" in df_filtered.columns else "IKF",
                 color=selected_korelasi_var,
                 size=selected_korelasi_var,
-                hover_data=["Pemda", "Opini Y", "Prediksi Opini BPK (ML)"],
+                hover_data=["Pemda", "Opini (Y)", "Prediksi Opini BPK (ML)"],
                 title=f"Tahun vs Belanja Pegawai (%) (Korelasi: {selected_korelasi_var.upper()})",
                 labels={"Tahun": "Tahun", "b_peg": "Proporsi Belanja Pegawai (%)", selected_korelasi_var: selected_korelasi_var.upper()},
                 color_continuous_scale="Viridis"
@@ -448,15 +479,16 @@ with tab1:
             st.plotly_chart(fig_sc_peg, use_container_width=True)
 
         with col_sc2:
+            col_barjas = "b_barjas" if "b_barjas" in df_filtered.columns else "b_brg"
             fig_sc_brg = px.scatter(
                 df_filtered,
                 x="Tahun",
-                y="b_brg",
+                y=col_barjas,
                 color=selected_korelasi_var,
                 size=selected_korelasi_var,
-                hover_data=["Pemda", "Opini Y", "Prediksi Opini BPK (ML)"],
-                title=f"Tahun vs Belanja Barang (%) (Korelasi: {selected_korelasi_var.upper()})",
-                labels={"Tahun": "Tahun", "b_brg": "Proporsi Belanja Barang (%)", selected_korelasi_var: selected_korelasi_var.upper()},
+                hover_data=["Pemda", "Opini (Y)", "Prediksi Opini BPK (ML)"],
+                title=f"Tahun vs Belanja Barang/Jasa (%) (Korelasi: {selected_korelasi_var.upper()})",
+                labels={"Tahun": "Tahun", col_barjas: "Proporsi Belanja Barjas (%)", selected_korelasi_var: selected_korelasi_var.upper()},
                 color_continuous_scale="Plasma"
             )
             fig_sc_brg.update_traces(marker=dict(opacity=0.85))
@@ -466,10 +498,10 @@ with tab1:
             fig_sc_mdl = px.scatter(
                 df_filtered,
                 x="Tahun",
-                y="b_mdl",
+                y="b_mdl" if "b_mdl" in df_filtered.columns else "IKF",
                 color=selected_korelasi_var,
                 size=selected_korelasi_var,
-                hover_data=["Pemda", "Opini Y", "Prediksi Opini BPK (ML)"],
+                hover_data=["Pemda", "Opini (Y)", "Prediksi Opini BPK (ML)"],
                 title=f"Tahun vs Belanja Modal (%) (Korelasi: {selected_korelasi_var.upper()})",
                 labels={"Tahun": "Tahun", "b_mdl": "Proporsi Belanja Modal (%)", selected_korelasi_var: selected_korelasi_var.upper()},
                 color_continuous_scale="Cividis"
@@ -540,7 +572,7 @@ with tab3:
 
     all_individual_vars = [
         "IKF", "DCC", "solvabilitas", "likuiditas", 
-        "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)", "Opini Y"
+        "b_peg", "b_barjas", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)", "Opini (Y)"
     ]
     available_ind_vars = [v for v in all_individual_vars if v in df_tab3.columns]
 
@@ -550,7 +582,7 @@ with tab3:
         selected_kmeans_vars = st.multiselect(
             "📌 Pilih variabel individual untuk Algoritma K-Means (Pilih minimal 2):",
             options=available_ind_vars,
-            default=["IKF", "DCC", "solvabilitas", "likuiditas", "Opini Y"],
+            default=["IKF", "DCC", "solvabilitas", "likuiditas", "Opini (Y)"] if "Opini (Y)" in available_ind_vars else available_ind_vars[:4],
             key="multiselect_kmeans_ind"
         )
 
@@ -562,7 +594,7 @@ with tab3:
     else:
         kmeans_calc_cols = []
         for v in selected_kmeans_vars:
-            if v == "Opini Y":
+            if v == "Opini (Y)":
                 kmeans_calc_cols.append("Opini Y_Kode")
             else:
                 kmeans_calc_cols.append(v)
@@ -587,7 +619,7 @@ with tab3:
                 x=x_km,
                 y=y_km,
                 color="Cluster_Label",
-                hover_data=["Pemda", "Tahun", "Opini Y", "Prediksi Opini BPK (ML)"],
+                hover_data=["Pemda", "Tahun", "Opini (Y)", "Prediksi Opini BPK (ML)"],
                 title=f"Scatterplot Hasil Klasterisasi K-Means ({x_km} vs {y_km})",
                 color_discrete_sequence=px.colors.qualitative.Set1
             )
@@ -595,7 +627,7 @@ with tab3:
             st.plotly_chart(fig_km, use_container_width=True)
 
             with st.expander("📋 Tabel Hasil Klasterisasi K-Means Pemda"):
-                cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini Y", "Prediksi Opini BPK (ML)"] + [v for v in selected_kmeans_vars if v != "Opini Y"]
+                cols_display = ["Pemda", "Tahun", "Cluster_Label", "Opini (Y)", "Prediksi Opini BPK (ML)"] + [v for v in selected_kmeans_vars if v != "Opini (Y)"]
                 existing_cols_display = [c for c in cols_display if c in df_km.columns]
                 st.dataframe(df_km[existing_cols_display], use_container_width=True)
         else:
