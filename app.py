@@ -17,9 +17,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS untuk Kartu Indikator & Kartu Opini
+# Custom CSS untuk Kartu Indikator & Kartu Opini BPK
 st.markdown("""
     <style>
+    /* Kartu Indikator Keuangan (Kuning vs Hijau) */
     .metric-card-green {
         background-color: #d4edda;
         border-left: 6px solid #28a745;
@@ -59,33 +60,33 @@ st.markdown("""
     /* Kartu Opini BPK (Rata Tengah + Dynamic Background) */
     .opini-card-wtp {
         background-color: #d4edda;
-        border: 2px solid #28a745;
-        border-radius: 10px;
-        padding: 16px;
+        border-left: 6px solid #28a745;
+        border-radius: 8px;
+        padding: 14px 16px;
         text-align: center;
         margin-bottom: 10px;
     }
     .opini-card-wtp-psh {
         background-color: #eef5db;
-        border: 2px solid #8a9a86;
-        border-radius: 10px;
-        padding: 16px;
+        border-left: 6px solid #8a9a86;
+        border-radius: 8px;
+        padding: 14px 16px;
         text-align: center;
         margin-bottom: 10px;
     }
     .opini-card-wdp {
         background-color: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 10px;
-        padding: 16px;
+        border-left: 6px solid #ffc107;
+        border-radius: 8px;
+        padding: 14px 16px;
         text-align: center;
         margin-bottom: 10px;
     }
     .opini-card-default {
         background-color: #f8f9fa;
-        border: 2px solid #dee2e6;
-        border-radius: 10px;
-        padding: 16px;
+        border-left: 6px solid #dee2e6;
+        border-radius: 8px;
+        padding: 14px 16px;
         text-align: center;
         margin-bottom: 10px;
     }
@@ -398,17 +399,22 @@ with tab1:
         opini_clean = str(opini_val).strip().upper()
         if "WTP PSH" in opini_clean:
             card_class = "opini-card-wtp-psh"
+            badge = "🟡 WTP PSH"
         elif "WTP" in opini_clean:
             card_class = "opini-card-wtp"
+            badge = "🟢 WTP"
         elif "WDP" in opini_clean:
             card_class = "opini-card-wdp"
+            badge = "⚠️ WDP"
         else:
             card_class = "opini-card-default"
+            badge = "-"
 
         html_code = f"""
         <div class="{card_class}">
             <div class="opini-title">{title}</div>
             <div class="opini-value">{opini_val}</div>
+            <div style="font-size:12px; font-weight:600; margin-top:4px; opacity:0.85;">Status Opini: {badge}</div>
         </div>
         """
         st.markdown(html_code, unsafe_allow_html=True)
