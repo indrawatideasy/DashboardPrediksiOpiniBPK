@@ -3,11 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 from sklearn.linear_model import LogisticRegression
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report
 
 # ---------------------------------------------------------
@@ -211,10 +208,10 @@ else:
     st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
     df = generate_sample_data()
 
-# Clean Kolom Nama agar bebas dari spasi ekstra (seperti ' b_barjas Y-1 ')
+# Clean Nama Kolom
 df.columns = df.columns.str.strip()
 
-# Standardisasi Penamaan Kolom Opini Y & Belanja Barang
+# Standardisasi Penamaan Kolom Opini (Y)
 if "Opini (Y)" not in df.columns:
     if "Opini Y" in df.columns:
         df["Opini (Y)"] = df["Opini Y"]
@@ -229,94 +226,14 @@ if "Opini Y_Kode" not in df.columns:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
         df["Opini Y_Kode"] = df["Opini (Y)"].map(reverse_map).fillna(3).astype(int)
 
-# Alias b_barjas ke b_brg (jika modul lama membutuhkannya)
 if "b_barjas" in df.columns and "b_brg" not in df.columns:
     df["b_brg"] = df["b_barjas"]
 
 # ---------------------------------------------------------
-# ALGORITMA LOGISTIC REGRESSION + HYPER TUNING (STRATIFIED)
+# SIDEBAR RADIO BUTTON FILTERS (GLOBAL) - INISIALISASI DINI
 # ---------------------------------------------------------
-feature_cols = [
-    "IKF", "DCC", "solvabilitas", "likuiditas", 
-    "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"
-]
+df_filtered = df.copy()
 
-available_features = [col for col in feature_cols if col in df.columns]
-
-model_accuracy = None
-class_report = None
-best_params = None
-
-if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
-    # 1. Bersihkan nilai NaN
-    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
-    
-    # 2. Validasi kecukupan data & jumlah kelas unik (minimal 2 kelas)
-    if len(df_clean) > 5 and df_clean["Opini Y_Kode"].nunique() >= 2:
-        try:
-            X = df_clean[available_features]
-            y = df_clean["Opini Y_Kode"].astype(int)
-            
-            # Hitung sampel minimum per kelas untuk menentukan n_splits StratifiedKFold
-            min_class_samples = y.value_counts().min()
-            n_splits = max(2, min(5, min_class_samples))
-            
-            # Strategi Pembagian Data: StratifiedKFold
-            stratified_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-            
-            # Grid Parameter untuk Hyperparameter Tuning
-            param_grid = {
-                'C': [0.01, 0.1, 1.0, 10.0],
-                'penalty': ['l1', 'l2'],
-                'solver': ['liblinear']
-            }
-            
-            base_model = LogisticRegression(max_iter=1000, random_state=42)
-            
-            # Eksekusi GridSearchCV dengan StratifiedKFold
-            grid_search = GridSearchCV(
-                estimator=base_model,
-                param_grid=param_grid,
-                cv=stratified_cv,
-                scoring='accuracy',
-                n_jobs=-1
-            )
-            
-            grid_search.fit(X, y)
-            
-            # Model Terbaik Hasil Tuning
-            best_model = grid_search.best_estimator_
-            best_params = grid_search.best_params_
-            
-            # Prediksi Seluruh Dataset
-            preds_code = best_model.predict(df[available_features].fillna(0))
-            df["Prediksi_Kode"] = preds_code
-            df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
-            
-            # Evaluasi Akurasi
-            y_pred = best_model.predict(X)
-            model_accuracy = accuracy_score(y, y_pred)
-            
-            # Format Laporan Klasifikasi
-            unique_classes = sorted(y.unique())
-            target_labels = [f"{OPINI_MAP[c]} ({c})" for c in unique_classes if c in OPINI_MAP]
-            
-            class_report = classification_report(
-                y, y_pred, 
-                target_names=target_labels if len(target_labels) == len(unique_classes) else None, 
-                output_dict=True
-            )
-        except Exception as err:
-            st.sidebar.warning(f"Hyperparameter Tuning Logistic Regression gagal: {err}")
-            df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
-    else:
-        df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
-else:
-    df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
-
-# ---------------------------------------------------------
-# SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
-# ---------------------------------------------------------
 selected_year = "Semua Tahun"
 if "Tahun" in df.columns:
     available_years = ["Semua Tahun"] + sorted([str(y) for y in df["Tahun"].dropna().unique()])
@@ -335,6 +252,89 @@ if "Pemda" in df.columns:
     
     if selected_pemda != "Semua Pemda":
         df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
+
+# ---------------------------------------------------------
+# ALGORITMA LOGISTIC REGRESSION + HYPER TUNING (STRATIFIED)
+# ---------------------------------------------------------
+feature_cols = [
+    "IKF", "DCC", "solvabilitas", "likuiditas", 
+    "b_peg", "b_mdl", "TLRHP Y-1_Sesuai", "%lunas_rugi(t-1)"
+]
+
+available_features = [col for col in feature_cols if col in df.columns]
+
+model_accuracy = None
+class_report = None
+best_params = None
+
+if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
+    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
+    
+    if len(df_clean) > 5 and df_clean["Opini Y_Kode"].nunique() >= 2:
+        try:
+            X = df_clean[available_features]
+            y = df_clean["Opini Y_Kode"].astype(int)
+            
+            min_class_samples = y.value_counts().min()
+            n_splits = max(2, min(5, min_class_samples))
+            
+            stratified_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+            
+            param_grid = {
+                'C': [0.01, 0.1, 1.0, 10.0],
+                'penalty': ['l1', 'l2'],
+                'solver': ['liblinear']
+            }
+            
+            base_model = LogisticRegression(max_iter=1000, random_state=42)
+            
+            grid_search = GridSearchCV(
+                estimator=base_model,
+                param_grid=param_grid,
+                cv=stratified_cv,
+                scoring='accuracy',
+                n_jobs=-1
+            )
+            
+            grid_search.fit(X, y)
+            
+            best_model = grid_search.best_estimator_
+            best_params = grid_search.best_params_
+            
+            preds_code = best_model.predict(df[available_features].fillna(0))
+            df["Prediksi_Kode"] = preds_code
+            df["Prediksi Opini BPK (ML)"] = df["Prediksi_Kode"].map(OPINI_MAP)
+            
+            y_pred = best_model.predict(X)
+            model_accuracy = accuracy_score(y, y_pred)
+            
+            unique_classes = sorted(y.unique())
+            target_labels = [f"{OPINI_MAP[c]} ({c})" for c in unique_classes if c in OPINI_MAP]
+            
+            class_report = classification_report(
+                y, y_pred, 
+                target_names=target_labels if len(target_labels) == len(unique_classes) else None, 
+                output_dict=True
+            )
+        except Exception as err:
+            st.sidebar.warning(f"Model Logistic Regression gagal dilatih: {err}")
+            df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
+    else:
+        df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
+else:
+    df["Prediksi Opini BPK (ML)"] = df["Opini (Y)"]
+
+# Update df_filtered setelah kolom prediksi ditambahkan
+if selected_year != "Semua Tahun":
+    try:
+        df_filtered = df[df["Tahun"] == int(selected_year)]
+    except ValueError:
+        df_filtered = df[df["Tahun"] == selected_year]
+else:
+    df_filtered = df.copy()
+
+if selected_pemda != "Semua Pemda":
+    df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
 
 # ---------------------------------------------------------
 # SETUP TABS
@@ -357,10 +357,8 @@ with tab1:
         
         val_curr = df_filtered[col_curr].mean()
         
-        # 1. Jika ada kolom %Grwth langsung di dataset terbaru
         if col_grwth in df_filtered.columns and not df_filtered[col_grwth].dropna().empty:
             delta = df_filtered[col_grwth].mean()
-        # 2. Jika ada kolom Y-1 langsung
         elif col_y1 in df_filtered.columns and not df_filtered[col_y1].dropna().empty:
             val_prev = df_filtered[col_y1].mean()
             delta = val_curr - val_prev
@@ -469,8 +467,10 @@ with tab1:
         render_opini_card("Prediksi Opini BPK (ML)", opini_pred)
 
     if model_accuracy is not None:
-        with st.expander("ℹ️ Detail Model Logistic Regression & Perbandingan Prediksi"):
-            st.write(f"**Akurasi Model Training Logistic Regression:** {model_accuracy * 100:.2f}%")
+        with st.expander("ℹ️ Detail Model Logistic Regression (Stratified Tuning) & Perbandingan Prediksi"):
+            st.write(f"**Akurasi Model Terbaik:** {model_accuracy * 100:.2f}%")
+            if best_params:
+                st.info(f"⚙️ **Hyperparameter Terbaik (GridSearch + StratifiedKFold):** {best_params}")
             
             col_exp1, col_exp2 = st.columns([1, 2])
             with col_exp1:
@@ -493,9 +493,7 @@ with tab1:
 
     st.markdown("---")
 
-    # ---------------------------------------------------------
-    # SECTION SCATTERPLOT KORELASI BELANJA (x=Tahun, y=Proporsi Belanja)
-    # ---------------------------------------------------------
+    # SECTION SCATTERPLOT KORELASI BELANJA
     st.subheader("🔍 Analisis Scatterplot Korelasi Belanja vs Indikator Keuangan")
 
     if not df_filtered.empty:
