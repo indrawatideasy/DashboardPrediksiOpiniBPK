@@ -115,26 +115,31 @@ OPINI_MAP = {
 }
 
 # ---------------------------------------------------------
-# Sidebar: Upload File & Automatic Data Loading
+# Caching Data Loader (Optimasi Memori)
 # ---------------------------------------------------------
-st.sidebar.header("📁 Filter Data")
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data_from_path(file_path):
+    return pd.read_excel(file_path)
 
-uploaded_file = st.sidebar.file_uploader("Unggah Opsional (Excel/CSV Data Pemda)", type=["xlsx", "xls", "csv"])
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_data_from_file(file_obj):
+    if file_obj.name.endswith('.csv'):
+        return pd.read_csv(file_obj)
+    return pd.read_excel(file_obj)
 
-LIST_PEMDA = [
-    "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
-    "Muba", "Mura", "Muratara", "OI", "OKI", "OKU", "OKUS", 
-    "OKUT", "Pagaralam", "Palembang", "Pali", "Prabumulih", "Sumsel"
-]
-LIST_TAHUN = [2021, 2022, 2023, 2024, 2025]
-
-@st.cache_data
+@st.cache_data(ttl=3600, show_spinner=False)
 def generate_sample_data():
     np.random.seed(42)
     records = []
+    list_pemda = [
+        "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
+        "Muba", "Mura", "Muratara", "OI", "OKI", "OKU", "OKUS", 
+        "OKUT", "Pagaralam", "Palembang", "Pali", "Prabumulih", "Sumsel"
+    ]
+    list_tahun = [2021, 2022, 2023, 2024, 2025]
     
-    for thn in LIST_TAHUN:
-        for pmd in LIST_PEMDA:
+    for thn in list_tahun:
+        for pmd in list_pemda:
             opini_code = np.random.choice([1, 2, 3], p=[0.15, 0.25, 0.60])
             
             ikf = np.round(np.random.uniform(0.2, 1.8), 3)
@@ -197,23 +202,23 @@ def generate_sample_data():
     return pd.DataFrame(records)
 
 # ---------------------------------------------------------
-# LOAD DATASET UTAMA DARI REPOSITORI GITHUB (advisorypemda.xlsx)
+# Sidebar: Upload File & Automatic Data Loading
 # ---------------------------------------------------------
+st.sidebar.header("📁 Filter Data")
+uploaded_file = st.sidebar.file_uploader("Unggah Opsional (Excel/CSV Data Pemda)", type=["xlsx", "xls", "csv"])
+
 GITHUB_DATASET_PATH = "advisorypemda.xlsx"
 
 if uploaded_file is not None:
     try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
+        df = load_data_from_file(uploaded_file)
         st.sidebar.success("File kustom berhasil diunggah!")
     except Exception as e:
         st.sidebar.error(f"Gagal membaca file unggahan: {e}")
         df = generate_sample_data()
 elif os.path.exists(GITHUB_DATASET_PATH):
     try:
-        df = pd.read_excel(GITHUB_DATASET_PATH)
+        df = load_data_from_path(GITHUB_DATASET_PATH)
         st.sidebar.success("📂 Menggunakan dataset repositori (`advisorypemda.xlsx`).")
     except Exception as e:
         st.sidebar.error(f"Gagal membaca `advisorypemda.xlsx` di repositori: {e}")
@@ -222,33 +227,28 @@ else:
     st.sidebar.info("Dataset `advisorypemda.xlsx` tidak ditemukan. Menggunakan sampel data internal.")
     df = generate_sample_data()
 
-# Clean Nama Kolom
+# Downcasting & Normalisasi Kolom
 df.columns = df.columns.str.strip()
 
-# Standardisasi Penamaan Kolom Opini (Y)
 if "Opini (Y)" not in df.columns:
     if "Opini Y" in df.columns:
         df["Opini (Y)"] = df["Opini Y"]
     elif "Opini Y-1" in df.columns:
         df["Opini (Y)"] = df["Opini Y-1"]
 
-# Normalisasi Opini Angka/Teks ke Label BPK Standard
 def normalize_opini(val):
     if pd.isna(val):
         return "WTP", 3
-    
     s_val = str(val).strip().upper()
     if s_val in ["WDP", "WTP PSH", "WTP"]:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
         return s_val, reverse_map[s_val]
-    
     try:
         num_val = int(float(s_val))
         if num_val in OPINI_MAP:
             return OPINI_MAP[num_val], num_val
     except (ValueError, TypeError):
         pass
-        
     return "WTP", 3
 
 if "Opini (Y)" in df.columns:
@@ -262,7 +262,7 @@ if "b_barjas" in df.columns and "b_brg" not in df.columns:
 # ---------------------------------------------------------
 # SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
 # ---------------------------------------------------------
-df_filtered = df.copy()
+df_filtered = df
 
 selected_year = "Semua Tahun"
 if "Tahun" in df.columns:
@@ -284,7 +284,7 @@ if "Pemda" in df.columns:
         df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
 
 # ---------------------------------------------------------
-# ALGORITMA LOGISTIC REGRESSION + HYPER TUNING (STRATIFIED)
+# ALGORITMA LOGISTIC REGRESSION (OPTIMASI RAM: n_jobs=1)
 # ---------------------------------------------------------
 feature_cols = [
     "IKF", "DCC", "solvabilitas", "likuiditas", 
@@ -298,7 +298,7 @@ class_report = None
 best_params = None
 
 if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns:
-    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"]).copy()
+    df_clean = df.dropna(subset=available_features + ["Opini Y_Kode"])
     
     if len(df_clean) > 5 and df_clean["Opini Y_Kode"].nunique() >= 2:
         try:
@@ -311,19 +311,20 @@ if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns
             stratified_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
             
             param_grid = {
-                'C': [0.01, 0.1, 1.0, 10.0],
-                'penalty': ['l1', 'l2'],
-                'solver': ['liblinear']
+                'C': [0.1, 1.0, 10.0],
+                'penalty': ['l2'],
+                'solver': ['lbfgs']
             }
             
-            base_model = LogisticRegression(max_iter=1000, random_state=42)
+            base_model = LogisticRegression(max_iter=500, random_state=42)
             
+            # n_jobs=1 membatasi penggunaan RAM berlebihan di server
             grid_search = GridSearchCV(
                 estimator=base_model,
                 param_grid=param_grid,
                 cv=stratified_cv,
                 scoring='accuracy',
-                n_jobs=-1
+                n_jobs=1
             )
             
             grid_search.fit(X, y)
@@ -361,7 +362,7 @@ if selected_year != "Semua Tahun":
     except ValueError:
         df_filtered = df[df["Tahun"] == selected_year]
 else:
-    df_filtered = df.copy()
+    df_filtered = df
 
 if selected_pemda != "Semua Pemda":
     df_filtered = df_filtered[df_filtered["Pemda"] == selected_pemda]
@@ -640,13 +641,13 @@ with tab3:
         
         if selected_year_tab3 != "Semua Tahun":
             try:
-                df_tab3 = df[df["Tahun"] == int(selected_year_tab3)].copy()
+                df_tab3 = df[df["Tahun"] == int(selected_year_tab3)]
             except ValueError:
-                df_tab3 = df[df["Tahun"] == selected_year_tab3].copy()
+                df_tab3 = df[df["Tahun"] == selected_year_tab3]
         else:
-            df_tab3 = df.copy()
+            df_tab3 = df
     else:
-        df_tab3 = df.copy()
+        df_tab3 = df
 
     st.markdown("---")
 
