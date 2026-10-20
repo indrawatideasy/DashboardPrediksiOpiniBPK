@@ -259,6 +259,23 @@ if "Opini (Y)" in df.columns:
 if "b_barjas" in df.columns and "b_brg" not in df.columns:
     df["b_brg"] = df["b_barjas"]
 
+# Mapping Fokus Area Kebijakan Pemda
+def determine_fokus_area(row):
+    lik = row.get("likuiditas", 1.0)
+    dcc = row.get("DCC", 30.0)
+    ikf = row.get("IKF", 0.5)
+    
+    if lik < 1.0 and dcc < 30.0:
+        return "Pendalaman Likuiditas (Kas & Utang Belanja)"
+    elif lik >= 1.0 and dcc < 30.0:
+        return "Penataan Struktur Belanja"
+    elif ikf > 1.0 or dcc >= 30.0:
+        return "Peningkatan PAD & Kemandirian Fiskal"
+    else:
+        return "Penataan Struktur Belanja"
+
+df["Fokus Area"] = df.apply(determine_fokus_area, axis=1)
+
 # ---------------------------------------------------------
 # SIDEBAR RADIO BUTTON FILTERS (GLOBAL)
 # ---------------------------------------------------------
@@ -318,7 +335,6 @@ if len(available_features) == len(feature_cols) and "Opini Y_Kode" in df.columns
             
             base_model = LogisticRegression(max_iter=500, random_state=42)
             
-            # n_jobs=1 membatasi penggunaan RAM berlebihan di server
             grid_search = GridSearchCV(
                 estimator=base_model,
                 param_grid=param_grid,
@@ -589,8 +605,60 @@ with tab1:
             )
             fig_sc_mdl.update_traces(marker=dict(opacity=0.85))
             st.plotly_chart(fig_sc_mdl, use_container_width=True)
+            
+        st.markdown("---")
+
+        # ---------------------------------------------------------
+        # VISUALISASI BUBBLE PLOT MATRIKS ADVISORY KEUANGAN PEMDA
+        # ---------------------------------------------------------
+        st.subheader("🫧 Matriks Advisory Keuangan Pemda (Bubble Plot)")
+        st.caption("Visualisasi hubungan **Likuiditas vs Days Cash Coverage (DCC)**. Ukuran bubble mewakili tingkat **Solvabilitas**, warna bubble mewakili **Fokus Area Kebijakan**.")
+
+        # Menghindari error nilai negatif/nol pada ukuran bubble Plotly
+        df_filtered_bubble = df_filtered.copy()
+        df_filtered_bubble["Bubble_Size"] = df_filtered_bubble["solvabilitas"].apply(lambda x: max(float(x), 0.1) if pd.notna(x) else 1.0)
+
+        fig_bubble_advisory = px.scatter(
+            df_filtered_bubble,
+            x="likuiditas",
+            y="DCC",
+            size="Bubble_Size",
+            color="Fokus Area",
+            hover_name="Pemda",
+            hover_data={
+                "Tahun": True,
+                "likuiditas": ":.2f",
+                "DCC": ":.1f Hari",
+                "solvabilitas": ":.2f",
+                "IKF": ":.3f",
+                "Opini (Y)": True,
+                "Prediksi Opini BPK (ML)": True,
+                "Bubble_Size": False
+            },
+            title="Matriks Risiko & Fokus Area Advisory Keuangan Pemda",
+            labels={
+                "likuiditas": "Rasio Likuiditas",
+                "DCC": "Days Cash Coverage (Hari)",
+                "Fokus Area": "Fokus Area Kebijakan"
+            },
+            color_discrete_map={
+                "Pendalaman Likuiditas (Kas & Utang Belanja)": "#e74c3c",
+                "Penataan Struktur Belanja": "#f39c12",
+                "Peningkatan PAD & Kemandirian Fiskal": "#2ecc71"
+            },
+            size_max=35,
+            template="plotly_white"
+        )
+
+        # Garis Batas Kuadran Risiko (Likuiditas = 1.0, DCC = 30 Hari)
+        fig_bubble_advisory.add_vline(x=1.0, line_dash="dash", line_color="gray", annotation_text="Batas Likuiditas (1.0)")
+        fig_bubble_advisory.add_hline(y=30.0, line_dash="dash", line_color="gray", annotation_text="Batas Aman DCC (30 Hari)")
+
+        fig_bubble_advisory.update_traces(marker=dict(opacity=0.8, line=dict(width=1, color='DarkSlateGrey')))
+        st.plotly_chart(fig_bubble_advisory, use_container_width=True)
+
     else:
-        st.info("Data tidak cukup untuk menampilkan scatterplot korelasi.")
+        st.info("Data tidak cukup untuk menampilkan scatterplot korelasi dan bubble plot.")
 
 # ---------------------------------------------------------
 # TAB 2: TREN INDIKATOR KEUANGAN PER TAHUN
