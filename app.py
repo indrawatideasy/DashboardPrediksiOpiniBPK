@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -114,11 +115,11 @@ OPINI_MAP = {
 }
 
 # ---------------------------------------------------------
-# Sidebar: Upload File & Filter Radio Buttons
+# Sidebar: Upload File & Automatic Data Loading
 # ---------------------------------------------------------
 st.sidebar.header("📁 Filter Data")
 
-uploaded_file = st.sidebar.file_uploader("Unggah File Excel/CSV Data Pemda", type=["xlsx", "xls", "csv"])
+uploaded_file = st.sidebar.file_uploader("Unggah Opsional (Excel/CSV Data Pemda)", type=["xlsx", "xls", "csv"])
 
 LIST_PEMDA = [
     "Banyuasin", "Empatlawang", "Lahat", "Lubuklinggau", "Ma_Enim", 
@@ -195,19 +196,30 @@ def generate_sample_data():
             })
     return pd.DataFrame(records)
 
-# Load Data
+# ---------------------------------------------------------
+# LOAD DATASET UTAMA DARI REPOSITORI GITHUB (advisorypemda.xlsx)
+# ---------------------------------------------------------
+GITHUB_DATASET_PATH = "advisorypemda.xlsx"
+
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
-        st.sidebar.success("File Excel/CSV berhasil diunggah!")
+        st.sidebar.success("File kustom berhasil diunggah!")
     except Exception as e:
-        st.sidebar.error(f"Gagal membaca file data: {e}")
+        st.sidebar.error(f"Gagal membaca file unggahan: {e}")
+        df = generate_sample_data()
+elif os.path.exists(GITHUB_DATASET_PATH):
+    try:
+        df = pd.read_excel(GITHUB_DATASET_PATH)
+        st.sidebar.success("📂 Menggunakan dataset repositori (`advisorypemda.xlsx`).")
+    except Exception as e:
+        st.sidebar.error(f"Gagal membaca `advisorypemda.xlsx` di repositori: {e}")
         df = generate_sample_data()
 else:
-    st.sidebar.info("Menggunakan sampel data Pemda Sumsel (2021-2025).")
+    st.sidebar.info("Dataset `advisorypemda.xlsx` tidak ditemukan. Menggunakan sampel data internal.")
     df = generate_sample_data()
 
 # Clean Nama Kolom
@@ -220,20 +232,16 @@ if "Opini (Y)" not in df.columns:
     elif "Opini Y-1" in df.columns:
         df["Opini (Y)"] = df["Opini Y-1"]
 
-# ---------------------------------------------------------
-# FUNGSI NORMALISASI OPINI (MENGUBAH ANGKA SANGAT RIGID MENJADI TEKS OPINI)
-# ---------------------------------------------------------
+# Normalisasi Opini Angka/Teks ke Label BPK Standard
 def normalize_opini(val):
     if pd.isna(val):
         return "WTP", 3
     
     s_val = str(val).strip().upper()
-    # Jika sudah berupa string nama opini
     if s_val in ["WDP", "WTP PSH", "WTP"]:
         reverse_map = {"WDP": 1, "WTP PSH": 2, "WTP": 3}
         return s_val, reverse_map[s_val]
     
-    # Jika berupa angka/float/string angka (misal: 1, 2, 3, 1.0, "1", "2.0")
     try:
         num_val = int(float(s_val))
         if num_val in OPINI_MAP:
